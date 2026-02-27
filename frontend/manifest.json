@@ -1,0 +1,16 @@
+{
+  "name": "AlphaLens - 국내 주식 AI 스코어링",
+  "short_name": "AlphaLens",
+  "description": "멀티팩터 기반 국내 주식 종합 분석 플랫폼",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0f1117",
+  "theme_color": "#0f1117",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}

@@ -1,0 +1,33 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:finance.naver.com)",
+      "Bash(pip show setuptools)",
+      "Bash(python -c \"import setuptools; print\\(setuptools.__file__\\)\")",
+      "Bash(python -c \"from backend.main import app; print\\(''Import OK''\\)\")",
+      "Bash(pip install pykrx --upgrade)",
+      "Bash(curl -s \"http://localhost:8000/api/v1/news/005930?max_articles=5\")",
+      "Bash(python -m json.tool --no-ensure-ascii)",
+      "Bash(curl -s \"http://localhost:8000/api/v1/scoring/005930\")",
+      "WebFetch(domain:m.stock.naver.com)",
+      "WebSearch",
+      "Bash(python -c \":*)",
+      "Bash(python run.py)",
+      "Bash(curl:*)",
+      "Bash(tasklist:*)",
+      "Bash(xargs grep:*)",
+      "Bash(netstat:*)",
+      "Bash(start:*)",
+      "Bash(ls:*)",
+      "Bash(docker compose:*)",
+      "Bash(docker version:*)",
+      "Bash(python:*)",
+      "Bash(docker ps:*)",
+      "Bash(node:*)"
+    ]
+  },
+  "env": {
+    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
+  }
+}
