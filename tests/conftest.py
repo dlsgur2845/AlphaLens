@@ -57,7 +57,7 @@ def client():
     from fastapi.testclient import TestClient
     from starlette.responses import PlainTextResponse
 
-    from backend.api.v1 import news, related, scoring, stocks
+    from backend.api.v1 import news, related, scoring, stocks, recommendations, geopolitical, backtest
     from backend.main import RateLimitMiddleware, SecurityHeadersMiddleware, _metrics
 
     @asynccontextmanager
@@ -93,6 +93,9 @@ def client():
     test_app.include_router(news.router, prefix="/api/v1/news")
     test_app.include_router(scoring.router, prefix="/api/v1/scoring")
     test_app.include_router(related.router, prefix="/api/v1/related")
+    test_app.include_router(recommendations.router, prefix="/api/v1/recommendations")
+    test_app.include_router(geopolitical.router, prefix="/api/v1/geopolitical")
+    test_app.include_router(backtest.router, prefix="/api/v1/backtest")
 
     with TestClient(test_app) as c:
         yield c
