@@ -16,7 +16,10 @@ const AlphaStream = {
     if (this._ws && this._ws.readyState === WebSocket.OPEN) return;
 
     const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const url = `${protocol}//${location.host}/api/v1/ws`;
+    let url = `${protocol}//${location.host}/api/v1/ws`;
+    if (typeof API !== 'undefined' && API._apiKey) {
+      url += `?api_key=${encodeURIComponent(API._apiKey)}`;
+    }
 
     this._intentionalClose = false;
     this._ws = new WebSocket(url);

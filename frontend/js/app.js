@@ -317,13 +317,13 @@ const App = {
         <div class="compare-score" style="color:${color}">${scoring.total_score.toFixed(1)}</div>
         <span class="compare-signal score-signal ${signalClass}">${compareLabel}${riskBadge}</span>
         <div class="compare-breakdown">
-          <div class="compare-breakdown-row"><span>기술적 분석 (30%)</span><span>${scoring.breakdown.technical.toFixed(1)}</span></div>
-          <div class="compare-breakdown-row"><span>매매 시그널 (20%)</span><span>${(scoring.breakdown.signal || 50).toFixed(1)}</span></div>
-          <div class="compare-breakdown-row"><span>펀더멘탈 (20%)</span><span>${scoring.breakdown.fundamental.toFixed(1)}</span></div>
-          <div class="compare-breakdown-row"><span>글로벌 매크로 (15%)</span><span>${(scoring.breakdown.macro || 50).toFixed(1)}</span></div>
-          <div class="compare-breakdown-row"><span>리스크 (10%)</span><span>${(scoring.breakdown.risk || 50).toFixed(1)}</span></div>
+          <div class="compare-breakdown-row"><span>기술적 분석 (23%)</span><span>${scoring.breakdown.technical.toFixed(1)}</span></div>
+          <div class="compare-breakdown-row"><span>매매 시그널 (19%)</span><span>${(scoring.breakdown.signal || 50).toFixed(1)}</span></div>
+          <div class="compare-breakdown-row"><span>펀더멘탈 (19%)</span><span>${scoring.breakdown.fundamental.toFixed(1)}</span></div>
+          <div class="compare-breakdown-row"><span>글로벌 매크로 (14%)</span><span>${(scoring.breakdown.macro || 50).toFixed(1)}</span></div>
+          <div class="compare-breakdown-row"><span>리스크 (15%)</span><span>${(scoring.breakdown.risk || 50).toFixed(1)}</span></div>
           <div class="compare-breakdown-row"><span>관련기업 (5%)</span><span>${scoring.breakdown.related_momentum.toFixed(1)}</span></div>
-          <div class="compare-breakdown-row" style="opacity:0.5"><span>뉴스 감성 (참고)</span><span>${scoring.breakdown.news_sentiment.toFixed(1)}</span></div>
+          <div class="compare-breakdown-row"><span>뉴스 감성 (5%)</span><span>${scoring.breakdown.news_sentiment.toFixed(1)}</span></div>
         </div>
       `;
     } catch (e) {
@@ -966,7 +966,7 @@ const App = {
     const obv = tech.obv || {};
     const over = details.over_market;
 
-    let techHTML = `<div class="tip-title">기술적 분석 (비중 30%)</div>`;
+    let techHTML = `<div class="tip-title">기술적 분석 (비중 23%)</div>`;
     techHTML += this._tipRow('RSI (14)', tech.rsi != null ? tech.rsi.toFixed(1) : '-',
       tech.rsi < 30 ? 'positive' : tech.rsi > 70 ? 'negative' : '');
     techHTML += this._tipRow('MACD 히스토그램', macd.histogram != null ? macd.histogram.toFixed(1) : '-',
@@ -999,7 +999,7 @@ const App = {
 
     // 매매 시그널 툴팁
     const sig = details.signal || {};
-    let sigHTML = `<div class="tip-title">매매 시그널 (비중 20%)</div>`;
+    let sigHTML = `<div class="tip-title">매매 시그널 (비중 19%)</div>`;
     sigHTML += this._tipRow('레짐', sig.regime || '-',
       sig.regime === 'BULL' ? 'positive' : sig.regime === 'BEAR' ? 'negative' : '');
     sigHTML += this._tipRow('액션', sig.action_label || '-');
@@ -1020,7 +1020,7 @@ const App = {
 
     // 펀더멘탈 툴팁
     const fund = details.fundamental || {};
-    let fundHTML = `<div class="tip-title">펀더멘탈 (비중 20%)</div>`;
+    let fundHTML = `<div class="tip-title">펀더멘탈 (비중 19%)</div>`;
     fundHTML += this._tipRow('PER', fund.per != null ? fund.per.toFixed(2) + '배' : '-',
       fund.per != null ? (fund.per > 0 && fund.per < 15 ? 'positive' : fund.per >= 40 || fund.per < 0 ? 'negative' : '') : '');
     fundHTML += this._tipRow('PBR', fund.pbr != null ? fund.pbr.toFixed(2) + '배' : '-',
@@ -1038,7 +1038,7 @@ const App = {
 
     // 글로벌 매크로 툴팁
     const macro = details.macro || {};
-    let macroHTML = `<div class="tip-title">글로벌 매크로 (비중 15%)</div>`;
+    let macroHTML = `<div class="tip-title">글로벌 매크로 (비중 14%)</div>`;
     if (macro.breakdown) {
       macroHTML += this._tipRow('미국 시장', macro.breakdown.us_market != null ? (macro.breakdown.us_market >= 0 ? '+' : '') + macro.breakdown.us_market.toFixed(1) : '-',
         macro.breakdown.us_market > 0 ? 'positive' : macro.breakdown.us_market < 0 ? 'negative' : '');
@@ -1064,12 +1064,13 @@ const App = {
 
     // 리스크 툴팁
     const risk = details.risk || {};
-    let riskHTML = `<div class="tip-title">리스크 관리 (비중 10%)</div>`;
+    let riskHTML = `<div class="tip-title">리스크 관리 (비중 15%)</div>`;
     if (risk.grade) riskHTML += this._tipRow('리스크 등급', risk.grade,
       risk.grade === 'A' || risk.grade === 'B' ? 'positive' : risk.grade === 'D' || risk.grade === 'E' ? 'negative' : '');
     if (risk.breakdown) {
       riskHTML += this._tipRow('변동성', risk.breakdown.volatility != null ? risk.breakdown.volatility.toFixed(1) : '-');
       riskHTML += this._tipRow('MDD', risk.breakdown.mdd != null ? risk.breakdown.mdd.toFixed(1) : '-');
+      riskHTML += this._tipRow('VaR/CVaR', risk.breakdown.var_cvar != null ? risk.breakdown.var_cvar.toFixed(1) : '-');
       riskHTML += this._tipRow('유동성', risk.breakdown.liquidity != null ? risk.breakdown.liquidity.toFixed(1) : '-');
     }
     if (risk.position_size_pct) riskHTML += this._tipRow('추천 비중', risk.position_size_pct.toFixed(1) + '%');
@@ -1079,7 +1080,7 @@ const App = {
 
     // 뉴스 감성 툴팁
     const news = details.news || {};
-    let newsHTML = `<div class="tip-title">뉴스 감성분석</div>`;
+    let newsHTML = `<div class="tip-title">뉴스 감성분석 (비중 5%)</div>`;
     newsHTML += this._tipRow('분석 기사 수', (news.total_articles || 0) + '건');
     newsHTML += this._tipRow('긍정', (news.positive || 0) + '건', 'positive');
     newsHTML += this._tipRow('부정', (news.negative || 0) + '건', 'negative');
@@ -1087,7 +1088,7 @@ const App = {
     newsHTML += this._tipRow('종합 감성', news.overall_sentiment != null ? (news.overall_sentiment > 0 ? '+' : '') + news.overall_sentiment.toFixed(3) : '-',
       news.overall_sentiment > 0.15 ? 'positive' : news.overall_sentiment < -0.15 ? 'negative' : '');
     newsHTML += '<div class="tip-divider"></div>';
-    newsHTML += '<div class="tip-note">종합 점수에 반영되지 않습니다 (참고용)</div>';
+    newsHTML += '<div class="tip-note">종합 점수에 5% 비중으로 반영됩니다</div>';
     document.getElementById('tooltipNews').innerHTML = newsHTML;
 
     // 관련기업 툴팁

@@ -325,6 +325,7 @@ async def calculate_score(code: str) -> ScoringResult:
                 "breakdown": {
                     "volatility": risk_result.breakdown.volatility,
                     "mdd": risk_result.breakdown.mdd,
+                    "var_cvar": risk_result.breakdown.var_cvar,
                     "liquidity": risk_result.breakdown.liquidity,
                 },
             }

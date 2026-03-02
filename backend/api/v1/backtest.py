@@ -1,11 +1,12 @@
 """백테스팅 API 엔드포인트."""
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Depends, Query
 
 from backend.services.backtest_service import backtest_engine
+from backend.utils.auth import verify_api_key
 from backend.utils.validators import validate_stock_code
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(verify_api_key)])
 
 
 @router.get("/{code}")

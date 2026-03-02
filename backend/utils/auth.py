@@ -1,7 +1,6 @@
 """API Key + JWT 인증 유틸리티."""
 
 import time
-from typing import Optional
 
 import jwt
 from fastapi import Header, HTTPException, Query
@@ -9,20 +8,28 @@ from fastapi import Header, HTTPException, Query
 from backend.config import settings
 
 
-async def verify_api_key(x_api_key: str = Header(default="")) -> None:
-    """X-API-Key 헤더 또는 JWT Bearer 토큰 검증."""
+async def verify_api_key(
+    x_api_key: str = Header(default=""),
+    authorization: str = Header(default=""),
+) -> None:
+    """X-API-Key 헤더 또는 Authorization Bearer 토큰 검증."""
     if not settings.api_key and not settings.jwt_secret:
         return  # 인증 미설정 → 개발 모드
 
-    # 1. API Key 체크
+    # 1. API Key 체크 (X-API-Key 헤더)
     if settings.api_key and x_api_key == settings.api_key:
         return
 
-    # 2. JWT Bearer 체크 (Authorization 헤더 또는 X-API-Key에 Bearer 토큰)
-    if settings.jwt_secret and x_api_key.startswith("Bearer "):
-        token = x_api_key[7:]
+    # 2. JWT Bearer 체크 (Authorization 헤더 우선, X-API-Key 폴백)
+    bearer_value = ""
+    if authorization.startswith("Bearer "):
+        bearer_value = authorization[7:]
+    elif x_api_key.startswith("Bearer "):
+        bearer_value = x_api_key[7:]
+
+    if settings.jwt_secret and bearer_value:
         try:
-            jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
+            jwt.decode(bearer_value, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
             return
         except jwt.ExpiredSignatureError:
             raise HTTPException(status_code=401, detail="Token expired")

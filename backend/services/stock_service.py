@@ -286,12 +286,13 @@ async def get_stock_detail(code: str) -> StockDetail | None:
         # totalInfos에서 PER, PBR, 거래량, 시가총액 추출
         per = None
         pbr = None
+        roe = None
         volume = 0
         market_cap = None
 
         for info in integ.get("totalInfos", []):
             code_key = info.get("code", "")
-            val = info.get("value", "").replace(",", "").replace("배", "").replace("원", "").strip()
+            val = info.get("value", "").replace(",", "").replace("배", "").replace("원", "").replace("%", "").strip()
 
             if code_key == "accumulatedTradingVolume":
                 try:
@@ -306,6 +307,11 @@ async def get_stock_detail(code: str) -> StockDetail | None:
             elif code_key == "pbr":
                 try:
                     pbr = float(val)
+                except ValueError:
+                    pass
+            elif code_key == "roe":
+                try:
+                    roe = float(val)
                 except ValueError:
                     pass
             elif code_key == "marketValue":
@@ -374,6 +380,7 @@ async def get_stock_detail(code: str) -> StockDetail | None:
             market_cap=market_cap,
             per=per,
             pbr=pbr,
+            roe=roe,
             sector=sector,
             market_status=market_status,
             traded_at=traded_at,

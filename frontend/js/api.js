@@ -20,6 +20,19 @@ function safeURL(url) {
 const API = {
   BASE: '/api/v1',
   TIMEOUT: 10000,
+  _apiKey: '',
+
+  setApiKey(key) {
+    this._apiKey = key;
+  },
+
+  _getHeaders() {
+    const headers = {};
+    if (this._apiKey) {
+      headers['X-API-Key'] = this._apiKey;
+    }
+    return headers;
+  },
 
   async _fetch(url, retries = 1) {
     if (!navigator.onLine) {
@@ -32,7 +45,10 @@ const API = {
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(), this.TIMEOUT);
 
-        const res = await fetch(url, { signal: controller.signal });
+        const res = await fetch(url, {
+          signal: controller.signal,
+          headers: this._getHeaders(),
+        });
         clearTimeout(timer);
 
         if (!res.ok) {
