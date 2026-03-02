@@ -1,12 +1,14 @@
 """주식 검색/상세 API 엔드포인트."""
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from backend.models.schemas import PriceHistory, StockDetail, StockSearchResult
 from backend.services import stock_service
 from backend.services.stock_service import _fetch_krx_stock_list
+from backend.utils.auth import verify_api_key
+from backend.utils.validators import validate_stock_code
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(verify_api_key)])
 
 
 @router.get("/search", response_model=list[StockSearchResult])
@@ -39,6 +41,7 @@ async def screener(
 @router.get("/{code}", response_model=StockDetail)
 async def get_stock_detail(code: str):
     """종목 상세정보 조회 API."""
+    validate_stock_code(code)
     result = await stock_service.get_stock_detail(code)
     if not result:
         raise HTTPException(status_code=404, detail="종목을 찾을 수 없습니다")
@@ -51,6 +54,7 @@ async def get_price_history(
     days: int = Query(90, ge=7, le=365),
 ):
     """가격 히스토리 조회 API."""
+    validate_stock_code(code)
     result = await stock_service.get_price_history(code, days)
     if not result:
         raise HTTPException(status_code=404, detail="가격 데이터를 찾을 수 없습니다")

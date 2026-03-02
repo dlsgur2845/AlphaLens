@@ -44,9 +44,12 @@ Chart.register(candleWickPlugin);
 /* ── 메인 차트 모듈 ── */
 const PriceChart = {
   chart: null,
+  rsiChart: null,
   mode: 'line',
   showMA: { 5: false, 20: true, 60: false },
   showVolume: true,
+  showBB: false,
+  showRSI: false,
   _rawData: null,
 
   init() {
@@ -63,10 +66,10 @@ const PriceChart = {
         plugins: {
           legend: { display: false },
           tooltip: {
-            backgroundColor: '#21253a',
-            titleColor: '#e8eaed',
-            bodyColor: '#9aa0a6',
-            borderColor: '#2d3348',
+            backgroundColor: '#1e2438',
+            titleColor: '#e6e8ec',
+            bodyColor: '#8f96a3',
+            borderColor: '#222840',
             borderWidth: 1,
             padding: 12,
             callbacks: {
@@ -93,6 +96,9 @@ const PriceChart = {
                     ? `${ds.label} ${Math.round(ctx.parsed.y).toLocaleString()}`
                     : null;
                 }
+                if (ds.label?.startsWith('BB')) {
+                  return ctx.parsed.y != null ? `${ds.label} ${Math.round(ctx.parsed.y).toLocaleString()}` : null;
+                }
                 return `${ctx.parsed.y.toLocaleString()}원`;
               },
             },
@@ -101,13 +107,13 @@ const PriceChart = {
         scales: {
           x: {
             grid: { color: 'rgba(255,255,255,0.04)' },
-            ticks: { color: '#6b7280', maxTicksLimit: 8, font: { size: 11 } },
+            ticks: { color: '#5a6173', maxTicksLimit: 8, font: { size: 11 } },
           },
           y: {
             position: 'left',
             grid: { color: 'rgba(255,255,255,0.04)' },
             ticks: {
-              color: '#6b7280',
+              color: '#5a6173',
               font: { size: 11 },
               callback(v) {
                 if (v >= 1e6) return (v / 1e6).toFixed(0) + 'M';
@@ -125,6 +131,43 @@ const PriceChart = {
         },
       },
     });
+
+    const rsiCtx = document.getElementById('rsiChart');
+    if (rsiCtx) {
+      this.rsiChart = new Chart(rsiCtx, {
+        type: 'line',
+        data: { labels: [], datasets: [] },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          interaction: { intersect: false, mode: 'index' },
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              backgroundColor: '#1e2438', titleColor: '#e6e8ec',
+              bodyColor: '#8f96a3', borderColor: '#222840', borderWidth: 1, padding: 8,
+              callbacks: {
+                label(ctx) {
+                  if (ctx.dataset.label === 'RSI') return ctx.parsed.y != null ? `RSI ${ctx.parsed.y.toFixed(1)}` : null;
+                  return null;
+                },
+              },
+            },
+          },
+          scales: {
+            x: { display: false },
+            y: {
+              min: 0, max: 100,
+              grid: { color: 'rgba(255,255,255,0.04)' },
+              ticks: {
+                color: '#5a6173', font: { size: 10 }, stepSize: 30,
+                callback(v) { return v === 30 || v === 70 ? v : ''; },
+              },
+            },
+          },
+        },
+      });
+    }
   },
 
   update(priceData) {
@@ -149,6 +192,20 @@ const PriceChart = {
     return this.showVolume;
   },
 
+  toggleBB() {
+    this.showBB = !this.showBB;
+    this._rebuild();
+    return this.showBB;
+  },
+
+  toggleRSI() {
+    this.showRSI = !this.showRSI;
+    const container = document.getElementById('rsiContainer');
+    if (container) container.style.display = this.showRSI ? '' : 'none';
+    this._rebuild();
+    return this.showRSI;
+  },
+
   _rebuild() {
     if (!this.chart || !this._rawData?.prices) return;
 
@@ -170,6 +227,11 @@ const PriceChart = {
       if (active) datasets.push(this._maDataset(closes, parseInt(period)));
     }
 
+    // 볼린저 밴드
+    if (this.showBB) {
+      datasets.push(...this._bbDatasets(closes));
+    }
+
     // 거래량
     if (this.showVolume) {
       datasets.push(this._volumeDataset(prices));
@@ -183,6 +245,10 @@ const PriceChart = {
     this.chart.data.labels = labels;
     this.chart.data.datasets = datasets;
     this.chart.update('none');
+
+    if (this.showRSI && this.rsiChart) {
+      this._updateRSI(closes, labels);
+    }
   },
 
   /* ── 데이터셋 빌더 ── */
@@ -191,14 +257,14 @@ const PriceChart = {
     const first = closes[0] || 0;
     const last = closes[closes.length - 1] || 0;
     const isUp = last >= first;
-    const color = isUp ? '#f87171' : '#4f8cff';
+    const color = isUp ? '#ef6b6b' : '#5b94ff';
 
     return {
       type: 'line',
       label: '종가',
       data: closes,
       borderColor: color,
-      backgroundColor: isUp ? 'rgba(248,113,113,0.08)' : 'rgba(79,140,255,0.08)',
+      backgroundColor: isUp ? 'rgba(239,107,107,0.08)' : 'rgba(91,148,255,0.08)',
       borderWidth: 2,
       pointRadius: 0,
       pointHoverRadius: 5,
@@ -243,7 +309,7 @@ const PriceChart = {
       }
     }
 
-    const colors = { 5: '#fbbf24', 20: '#a78bfa', 60: '#f472b6' };
+    const colors = { 5: '#f0b429', 20: '#a78bfa', 60: '#f472b6' };
     const dashes = { 5: [], 20: [6, 3], 60: [2, 2] };
 
     return {
@@ -263,13 +329,48 @@ const PriceChart = {
     };
   },
 
+  _bbDatasets(closes) {
+    const period = 20;
+    const numStd = 2;
+    const upper = [];
+    const lower = [];
+
+    for (let i = 0; i < closes.length; i++) {
+      if (i < period - 1) {
+        upper.push(null);
+        lower.push(null);
+      } else {
+        const slice = closes.slice(i - period + 1, i + 1);
+        const avg = slice.reduce((a, b) => a + b, 0) / period;
+        const std = Math.sqrt(slice.reduce((s, v) => s + (v - avg) ** 2, 0) / period);
+        upper.push(avg + numStd * std);
+        lower.push(avg - numStd * std);
+      }
+    }
+
+    return [
+      {
+        type: 'line', label: 'BB Upper', data: upper,
+        borderColor: 'rgba(156,163,175,0.5)', borderWidth: 1, borderDash: [4, 2],
+        pointRadius: 0, fill: '+1', backgroundColor: 'rgba(156,163,175,0.06)',
+        yAxisID: 'y', order: 0, spanGaps: true,
+      },
+      {
+        type: 'line', label: 'BB Lower', data: lower,
+        borderColor: 'rgba(156,163,175,0.5)', borderWidth: 1, borderDash: [4, 2],
+        pointRadius: 0, fill: false,
+        yAxisID: 'y', order: 0, spanGaps: true,
+      },
+    ];
+  },
+
   _volumeDataset(prices) {
     const volumes = prices.map((p) => p.volume);
     const colors = prices.map((p, i) => {
       if (i === 0) return 'rgba(107,114,128,0.25)';
       return p.close >= prices[i - 1].close
-        ? 'rgba(248,113,113,0.25)'
-        : 'rgba(79,140,255,0.25)';
+        ? 'rgba(239,107,107,0.25)'
+        : 'rgba(91,148,255,0.25)';
     });
 
     return {
@@ -285,10 +386,65 @@ const PriceChart = {
     };
   },
 
+  _calcRSI(closes, period = 14) {
+    const rsi = new Array(closes.length).fill(null);
+    if (closes.length < period + 1) return rsi;
+
+    let sumGain = 0;
+    let sumLoss = 0;
+    for (let i = 1; i <= period; i++) {
+      const diff = closes[i] - closes[i - 1];
+      if (diff > 0) sumGain += diff;
+      else sumLoss += Math.abs(diff);
+    }
+    let avgGain = sumGain / period;
+    let avgLoss = sumLoss / period;
+
+    rsi[period] = avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss);
+
+    for (let i = period + 1; i < closes.length; i++) {
+      const diff = closes[i] - closes[i - 1];
+      avgGain = (avgGain * (period - 1) + (diff > 0 ? diff : 0)) / period;
+      avgLoss = (avgLoss * (period - 1) + (diff < 0 ? Math.abs(diff) : 0)) / period;
+      rsi[i] = avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss);
+    }
+
+    return rsi;
+  },
+
+  _updateRSI(closes, labels) {
+    const rsi = this._calcRSI(closes);
+
+    this.rsiChart.data.labels = labels;
+    this.rsiChart.data.datasets = [
+      {
+        label: 'RSI', data: rsi,
+        borderColor: '#a78bfa', borderWidth: 1.5,
+        pointRadius: 0, pointHoverRadius: 3,
+        fill: false, tension: 0.3, spanGaps: true,
+      },
+      {
+        label: '과매수', data: new Array(labels.length).fill(70),
+        borderColor: 'rgba(239,68,68,0.3)', borderWidth: 1,
+        borderDash: [4, 4], pointRadius: 0, fill: false,
+      },
+      {
+        label: '과매도', data: new Array(labels.length).fill(30),
+        borderColor: 'rgba(59,130,246,0.3)', borderWidth: 1,
+        borderDash: [4, 4], pointRadius: 0, fill: false,
+      },
+    ];
+    this.rsiChart.update('none');
+  },
+
   destroy() {
     if (this.chart) {
       this.chart.destroy();
       this.chart = null;
+    }
+    if (this.rsiChart) {
+      this.rsiChart.destroy();
+      this.rsiChart = null;
     }
   },
 };

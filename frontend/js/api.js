@@ -4,6 +4,19 @@
  * - 1회 자동 재시도
  * - 오프라인 감지
  */
+
+/* ── HTML 이스케이프 유틸리티 ── */
+function escapeHTML(str) {
+  if (typeof str !== 'string') return String(str ?? '');
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+function safeURL(url) {
+  if (typeof url !== 'string') return '#';
+  if (url.startsWith('http://') || url.startsWith('https://')) return url;
+  return '#';
+}
+
 const API = {
   BASE: '/api/v1',
   TIMEOUT: 10000,
@@ -64,6 +77,14 @@ const API = {
 
   getScoring(code) {
     return this.get(`/scoring/${code}`);
+  },
+
+  getRecommendations() {
+    return this.get('/recommendations');
+  },
+
+  getGeopolitical() {
+    return this.get('/geopolitical');
   },
 };
 

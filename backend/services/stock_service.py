@@ -3,9 +3,14 @@
 from __future__ import annotations
 
 import asyncio
+import logging
+import time
 from datetime import datetime, timedelta
 
+import httpx
 import pandas as pd
+
+logger = logging.getLogger(__name__)
 
 from backend.models.schemas import (
     OverMarketPrice,
@@ -17,47 +22,138 @@ from backend.models.schemas import (
 from backend.services.cache_service import cache
 from backend.services.http_client import get_desktop_client, get_mobile_client
 
+
+# ---------------------------------------------------------------------------
+# Circuit Breaker
+# ---------------------------------------------------------------------------
+class CircuitBreaker:
+    """Simple circuit breaker for external API calls."""
+
+    def __init__(self, failure_threshold: int = 3, reset_timeout: int = 120):
+        self.failure_threshold = failure_threshold
+        self.reset_timeout = reset_timeout
+        self.failures = 0
+        self.last_failure_time: float = 0
+        self.state = "closed"  # closed, open, half-open
+
+    def can_execute(self) -> bool:
+        if self.state == "closed":
+            return True
+        if self.state == "open":
+            if time.time() - self.last_failure_time > self.reset_timeout:
+                self.state = "half-open"
+                return True
+            return False
+        return True  # half-open
+
+    def record_success(self):
+        self.failures = 0
+        self.state = "closed"
+
+    def record_failure(self):
+        self.failures += 1
+        self.last_failure_time = time.time()
+        if self.failures >= self.failure_threshold:
+            self.state = "open"
+            logger.warning("Circuit breaker opened after %d failures", self.failures)
+
+
+_cb_krx = CircuitBreaker(failure_threshold=3, reset_timeout=120)
+_cb_naver = CircuitBreaker(failure_threshold=3, reset_timeout=120)
+
+# ---------------------------------------------------------------------------
+# Stock list with TTL
+# ---------------------------------------------------------------------------
 _stock_list: list[dict] | None = None
+_stock_list_updated_at: float = 0
+_STOCK_LIST_TTL = 21600  # 6 hours
+
+
+async def _get_stock_list() -> list[dict]:
+    """Return cached stock list, refreshing if TTL expired."""
+    global _stock_list, _stock_list_updated_at
+    if _stock_list is not None and (time.time() - _stock_list_updated_at) < _STOCK_LIST_TTL:
+        return _stock_list
+    _stock_list = await _fetch_krx_stock_list()
+    _stock_list_updated_at = time.time()
+    return _stock_list
+
+
+async def get_stock_name(code: str) -> str:
+    """종목코드로 종목명 조회. 못 찾으면 코드 자체를 반환."""
+    stocks = await _get_stock_list()
+    for s in stocks:
+        if s["code"] == code:
+            return s["name"]
+    return code
+
+
+def _parse_market_cap(raw: str) -> int | None:
+    """시가총액 문자열 파싱 (예: '1,281조 6,016억' → 12816016억원 → 원 단위)."""
+    import re
+    if not raw:
+        return None
+    raw = raw.replace(",", "").replace(" ", "")
+    total = 0
+    # 조 단위 추출
+    m_jo = re.search(r"(\d+)조", raw)
+    if m_jo:
+        total += int(m_jo.group(1)) * 10000_0000_0000  # 1조 = 1,000,000,000,000
+    # 억 단위 추출
+    m_eok = re.search(r"(\d+)억", raw)
+    if m_eok:
+        total += int(m_eok.group(1)) * 1_0000_0000  # 1억 = 100,000,000
+    return total if total > 0 else None
 
 
 async def _fetch_krx_stock_list() -> list[dict]:
-    """KRX에서 KOSPI+KOSDAQ 전체 종목 목록 가져오기."""
-    global _stock_list
-    if _stock_list is not None:
-        return _stock_list
-
+    """KRX에서 KOSPI+KOSDAQ 전체 종목 목록 가져오기 (서킷 브레이커 + 재시도)."""
     results = []
     url = "http://data.krx.co.kr/comm/bldAttend498/getJsonData.cmd"
 
+    if not _cb_krx.can_execute():
+        logger.warning("KRX circuit breaker open, falling back to Naver")
+        return await _fetch_naver_stock_list()
+
     client = get_desktop_client()
     for mkt_id, mkt_name in [("STK", "KOSPI"), ("KSQ", "KOSDAQ")]:
-        try:
-            resp = await client.post(
-                url,
-                data={
-                    "bld": "dbms/comm/finder/finder_stkisu",
-                    "mktsel": mkt_id,
-                },
-            )
-            data = resp.json()
-            for item in data.get("block1", []):
-                code = item.get("short_code", "")
-                name = item.get("codeName", "")
-                if code and name and len(code) == 6:
-                    results.append({
-                        "code": code,
-                        "name": name,
-                        "market": mkt_name,
-                    })
-        except Exception:
-            continue
+        success = False
+        for attempt in range(3):
+            try:
+                resp = await client.post(
+                    url,
+                    data={
+                        "bld": "dbms/comm/finder/finder_stkisu",
+                        "mktsel": mkt_id,
+                    },
+                )
+                resp.raise_for_status()
+                data = resp.json()
+                for item in data.get("block1", []):
+                    code = item.get("short_code", "")
+                    name = item.get("codeName", "")
+                    if code and name and len(code) == 6:
+                        results.append({
+                            "code": code,
+                            "name": name,
+                            "market": mkt_name,
+                        })
+                _cb_krx.record_success()
+                success = True
+                break
+            except (httpx.HTTPStatusError, httpx.RequestError) as e:
+                logger.warning("KRX %s attempt %d failed: %s", mkt_name, attempt + 1, e)
+                _cb_krx.record_failure()
+                if attempt < 2:
+                    await asyncio.sleep(1 * (attempt + 1))
+        if not success:
+            logger.warning("KRX %s all retries exhausted", mkt_name)
 
     # KRX API 실패 시 네이버 금융에서 폴백
     if not results:
         results = await _fetch_naver_stock_list()
 
-    _stock_list = results
-    return _stock_list
+    return results
 
 
 async def _fetch_naver_stock_list() -> list[dict]:
@@ -95,7 +191,8 @@ async def _fetch_naver_stock_list() -> list[dict]:
 
                 if not found_any:
                     break
-            except Exception:
+            except (httpx.HTTPStatusError, httpx.RequestError) as e:
+                logger.warning("네이버 종목 목록 폴백 실패 (시장=%s, 페이지=%d): %s", mkt_name, page, e)
                 break
 
     return results
@@ -108,7 +205,7 @@ async def search_stocks(query: str, limit: int = 20) -> list[StockSearchResult]:
     if cached:
         return cached
 
-    stocks = await _fetch_krx_stock_list()
+    stocks = await _get_stock_list()
     query_lower = query.lower()
 
     # 정확한 매칭 우선, 부분 매칭 후순위
@@ -139,16 +236,31 @@ async def get_stock_detail(code: str) -> StockDetail | None:
     if cached:
         return cached
 
+    if not _cb_naver.can_execute():
+        logger.warning("Naver circuit breaker open, skipping detail for %s", code)
+        return None
+
     client = get_mobile_client()
-    try:
-        # 기본 정보 + 상세 정보 병렬 요청
-        basic_resp, integ_resp = await asyncio.gather(
-            client.get(f"https://m.stock.naver.com/api/stock/{code}/basic"),
-            client.get(f"https://m.stock.naver.com/api/stock/{code}/integration"),
-        )
-        basic = basic_resp.json()
-        integ = integ_resp.json()
-    except Exception:
+    basic = None
+    integ = None
+    for attempt in range(3):
+        try:
+            basic_resp, integ_resp = await asyncio.gather(
+                client.get(f"https://m.stock.naver.com/api/stock/{code}/basic"),
+                client.get(f"https://m.stock.naver.com/api/stock/{code}/integration"),
+            )
+            basic_resp.raise_for_status()
+            integ_resp.raise_for_status()
+            basic = basic_resp.json()
+            integ = integ_resp.json()
+            _cb_naver.record_success()
+            break
+        except (httpx.HTTPStatusError, httpx.RequestError) as e:
+            logger.warning("종목 상세 API attempt %d failed (%s): %s", attempt + 1, code, e)
+            _cb_naver.record_failure()
+            if attempt < 2:
+                await asyncio.sleep(1 * (attempt + 1))
+    if basic is None or integ is None:
         return None
 
     try:
@@ -196,10 +308,22 @@ async def get_stock_detail(code: str) -> StockDetail | None:
                     pbr = float(val)
                 except ValueError:
                     pass
+            elif code_key == "marketValue":
+                market_cap = _parse_market_cap(info.get("value", ""))
 
-        # 업종
+        # 업종: industryCode로 API 조회
         sector = None
-        industry_info = integ.get("industryCompareInfo", [])
+        industry_code = integ.get("industryCode")
+        if industry_code:
+            try:
+                ind_resp = await client.get(
+                    f"https://m.stock.naver.com/api/stocks/industry/{industry_code}"
+                )
+                ind_resp.raise_for_status()
+                ind_data = ind_resp.json()
+                sector = ind_data.get("groupInfo", {}).get("name")
+            except (httpx.HTTPStatusError, httpx.RequestError) as e:
+                logger.warning("업종 정보 조회 실패 (%s): %s", code, e)
 
         # 시장 상태, 거래 시각
         market_status = basic.get("marketStatus", None)
@@ -232,7 +356,7 @@ async def get_stock_detail(code: str) -> StockDetail | None:
                 pass
 
         # 종목 리스트에서 시장 확인
-        stocks = await _fetch_krx_stock_list()
+        stocks = await _get_stock_list()
         market = market_name
         for s in stocks:
             if s["code"] == code:
@@ -258,7 +382,8 @@ async def get_stock_detail(code: str) -> StockDetail | None:
         cache.set(cache_key, result, ttl=300)
         return result
 
-    except Exception:
+    except (KeyError, ValueError, TypeError) as e:
+        logger.warning("종목 상세 데이터 파싱 실패 (%s): %s", code, e)
         return None
 
 
@@ -269,15 +394,14 @@ async def get_price_history(code: str, days: int = 90) -> PriceHistory | None:
     if cached:
         return cached
 
+    if not _cb_naver.can_execute():
+        logger.warning("Naver circuit breaker open, skipping price history for %s", code)
+        return None
+
     from bs4 import BeautifulSoup
 
     # 종목명 조회
-    stocks = await _fetch_krx_stock_list()
-    name = code
-    for s in stocks:
-        if s["code"] == code:
-            name = s["name"]
-            break
+    name = await get_stock_name(code)
 
     prices: list[PricePoint] = []
     pages_needed = (days // 10) + 2
@@ -289,8 +413,25 @@ async def get_price_history(code: str, days: int = 90) -> PriceHistory | None:
             f"https://finance.naver.com/item/sise_day.naver"
             f"?code={code}&page={page}"
         )
+        resp = None
+        for attempt in range(3):
+            try:
+                resp = await client.get(url)
+                resp.raise_for_status()
+                _cb_naver.record_success()
+                break
+            except (httpx.HTTPStatusError, httpx.RequestError) as e:
+                logger.warning("가격 히스토리 attempt %d failed (%s, page=%d): %s", attempt + 1, code, page, e)
+                _cb_naver.record_failure()
+                if attempt < 2:
+                    await asyncio.sleep(1 * (attempt + 1))
+                else:
+                    resp = None
+
+        if resp is None:
+            break
+
         try:
-            resp = await client.get(url)
             soup = BeautifulSoup(resp.text, "lxml")
             rows = soup.select("table.type2 tr")
 
@@ -332,7 +473,8 @@ async def get_price_history(code: str, days: int = 90) -> PriceHistory | None:
             if not found and prices:
                 break
 
-        except Exception:
+        except Exception as e:
+            logger.warning("가격 히스토리 파싱 실패 (%s, page=%d): %s", code, page, e)
             break
 
     if not prices:
@@ -354,7 +496,7 @@ async def get_sector_stocks(sector: str, market: str) -> list[dict]:
 
     # 업종 정보는 종목 상세에서 개별 수집하므로 여기선 간단하게 처리
     # 전체 목록에서 같은 그룹명을 가진 종목 반환
-    stocks = await _fetch_krx_stock_list()
+    stocks = await _get_stock_list()
     result = [s for s in stocks if s.get("market") == market][:20]
 
     cache.set(cache_key, result, ttl=600)

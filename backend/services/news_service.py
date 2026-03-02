@@ -4,12 +4,15 @@ from __future__ import annotations
 
 import asyncio
 import html
+import logging
 from datetime import datetime
 
 from backend.models.schemas import NewsArticle, NewsResult
 from backend.services.cache_service import cache
 from backend.services.http_client import get_mobile_client
 from backend.utils.sentiment import analyze_sentiment
+
+logger = logging.getLogger(__name__)
 
 
 async def get_stock_news(
@@ -24,13 +27,8 @@ async def get_stock_news(
         return cached
 
     if not stock_name:
-        from backend.services.stock_service import _fetch_krx_stock_list
-        stocks = await _fetch_krx_stock_list()
-        stock_name = stock_code
-        for s in stocks:
-            if s["code"] == stock_code:
-                stock_name = s["name"]
-                break
+        from backend.services.stock_service import get_stock_name
+        stock_name = await get_stock_name(stock_code)
 
     # 네이버 금융 모바일 API에서 뉴스 가져오기
     url = f"https://m.stock.naver.com/api/news/stock/{stock_code}"
@@ -78,8 +76,8 @@ async def get_stock_news(
             if len(raw_articles) >= max_articles:
                 break
 
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("News fetch failed for %s: %s", stock_code, e)
 
     # 감성분석 수행
     articles: list[NewsArticle] = []
@@ -87,8 +85,21 @@ async def get_stock_news(
     total_sentiment = 0.0
 
     for raw in raw_articles:
-        # 제목(가중) + 본문 분리 감성분석
-        score, label = analyze_sentiment(raw["title"], raw.get("body", ""))
+        # 제목(가중) + 본문 분리 감성분석 (FinBERT 앙상블 또는 키워드)
+        score, label, method = analyze_sentiment(raw["title"], raw.get("body", ""))
+
+        # FinBERT 개별 결과 추출 (앙상블 시)
+        fb_score = None
+        fb_confidence = None
+        if method == "finbert_ensemble":
+            try:
+                from backend.services.finbert_service import finbert
+                fb_result = finbert.analyze(raw["title"])
+                if fb_result:
+                    fb_score = fb_result["score"]
+                    fb_confidence = fb_result["confidence"]
+            except ImportError:
+                pass
 
         articles.append(
             NewsArticle(
@@ -99,6 +110,8 @@ async def get_stock_news(
                 summary=raw["title"],
                 sentiment_score=score,
                 sentiment_label=label,
+                finbert_score=fb_score,
+                finbert_confidence=fb_confidence,
             )
         )
 

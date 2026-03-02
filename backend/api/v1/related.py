@@ -1,12 +1,14 @@
 """관련기업 탐색 API 엔드포인트."""
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from backend.models.schemas import RelatedCompanyResult
 from backend.services import related_company_service
-from backend.services.stock_service import _fetch_krx_stock_list
+from backend.services.stock_service import get_stock_name
+from backend.utils.auth import verify_api_key
+from backend.utils.validators import validate_stock_code
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(verify_api_key)])
 
 
 @router.get("/{code}", response_model=RelatedCompanyResult)
@@ -16,12 +18,8 @@ async def get_related_companies(
     max: int = Query(20, ge=1, le=50, description="최대 결과 수"),
 ):
     """관련기업 BFS 탐색 API."""
-    stocks = await _fetch_krx_stock_list()
-    name = code
-    for s in stocks:
-        if s["code"] == code:
-            name = s["name"]
-            break
+    validate_stock_code(code)
+    name = await get_stock_name(code)
 
     companies = await related_company_service.find_related_companies(
         code, max_depth=depth, max_companies=max

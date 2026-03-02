@@ -89,12 +89,12 @@ const Search = {
     let html = '';
 
     if (favs.length > 0) {
-      html += '<div class="search-section-label">&#11088; 즐겨찾기</div>';
+      html += '<div class="search-section-label">즐겨찾기</div>';
       html += favs.map((s) => this._quickItemHTML(s)).join('');
     }
 
     if (recent.length > 0) {
-      html += '<div class="search-section-label">&#128336; 최근 검색</div>';
+      html += '<div class="search-section-label">최근 검색</div>';
       html += recent.map((s) => this._quickItemHTML(s)).join('');
     }
 
@@ -110,9 +110,9 @@ const Search = {
     const changeStr = changePct > 0 ? `+${changePct}%` : `${changePct}%`;
 
     return `
-      <div class="search-item" data-code="${stock.code}" data-name="${stock.name}">
+      <div class="search-item" data-code="${stock.code}" data-name="${escapeHTML(stock.name)}">
         <div>
-          <span class="search-item-name">${stock.name}</span>
+          <span class="search-item-name">${escapeHTML(stock.name)}</span>
           <span class="search-item-code">${stock.code}</span>
         </div>
         <span style="font-size:13px;font-weight:600;color:${changeColor}">${changeStr}</span>
@@ -136,12 +136,12 @@ const Search = {
       dropdown.innerHTML = results
         .map(
           (s) => `
-        <div class="search-item" data-code="${s.code}" data-name="${s.name}">
+        <div class="search-item" data-code="${s.code}" data-name="${escapeHTML(s.name)}">
           <div>
-            <span class="search-item-name">${s.name}</span>
+            <span class="search-item-name">${escapeHTML(s.name)}</span>
             <span class="search-item-code">${s.code}</span>
           </div>
-          <span class="search-item-market">${s.market}</span>
+          <span class="search-item-market">${escapeHTML(s.market)}</span>
         </div>
       `
         )

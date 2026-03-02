@@ -15,38 +15,27 @@ const ScoreGauge = {
 
     ctx.clearRect(0, 0, w, h);
 
-    // 배경 원호
+    // 배경 원호 (그라데이션)
     const startAngle = 0.75 * Math.PI;
     const endAngle = 2.25 * Math.PI;
     const totalAngle = endAngle - startAngle;
 
+    const bgGradient = ctx.createLinearGradient(0, h, w, 0);
+    bgGradient.addColorStop(0, 'rgba(239,68,68,0.15)');
+    bgGradient.addColorStop(0.25, 'rgba(245,158,11,0.15)');
+    bgGradient.addColorStop(0.5, 'rgba(234,179,8,0.15)');
+    bgGradient.addColorStop(0.75, 'rgba(34,197,94,0.15)');
+    bgGradient.addColorStop(1, 'rgba(16,185,129,0.15)');
+
     ctx.beginPath();
     ctx.arc(cx, cy, r, startAngle, endAngle);
-    ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+    ctx.strokeStyle = bgGradient;
     ctx.lineWidth = 12;
     ctx.lineCap = 'round';
     ctx.stroke();
 
     // 점수 원호
     const scoreAngle = startAngle + (score / 100) * totalAngle;
-    const gradient = ctx.createConicGradient(startAngle, cx, cy);
-
-    if (score >= 70) {
-      gradient.addColorStop(0, '#34d399');
-      gradient.addColorStop(1, '#10b981');
-    } else if (score >= 55) {
-      gradient.addColorStop(0, '#6ee7b7');
-      gradient.addColorStop(1, '#34d399');
-    } else if (score >= 45) {
-      gradient.addColorStop(0, '#fbbf24');
-      gradient.addColorStop(1, '#f59e0b');
-    } else if (score >= 30) {
-      gradient.addColorStop(0, '#fca5a5');
-      gradient.addColorStop(1, '#f87171');
-    } else {
-      gradient.addColorStop(0, '#f87171');
-      gradient.addColorStop(1, '#ef4444');
-    }
 
     ctx.beginPath();
     ctx.arc(cx, cy, r, startAngle, scoreAngle);
@@ -69,20 +58,27 @@ const ScoreGauge = {
   },
 
   getColor(score) {
-    if (score >= 70) return '#34d399';
-    if (score >= 55) return '#6ee7b7';
-    if (score >= 45) return '#fbbf24';
-    if (score >= 30) return '#fca5a5';
-    return '#f87171';
+    if (score >= 70) return '#2dd4a0';
+    if (score >= 55) return '#5eead4';
+    if (score >= 45) return '#f0b429';
+    if (score >= 30) return '#f9a8a8';
+    return '#ef6b6b';
   },
 
   getSignalClass(signal) {
     const map = {
-      '강한상승': 'strong-up',
-      '상승': 'up',
+      '강력매수': 'strong-buy',
+      '매수': 'buy',
+      '관망(매수우위)': 'lean-buy',
       '중립': 'neutral',
-      '하락': 'down',
-      '강한하락': 'strong-down',
+      '관망(매도우위)': 'lean-sell',
+      '매도': 'sell',
+      '강력매도': 'strong-sell',
+      // 하위 호환
+      '강한상승': 'strong-buy',
+      '상승': 'buy',
+      '하락': 'sell',
+      '강한하락': 'strong-sell',
     };
     return map[signal] || 'neutral';
   },
@@ -90,9 +86,12 @@ const ScoreGauge = {
   updateBreakdown(breakdown) {
     const items = [
       { bar: 'barTechnical', val: 'valTechnical', score: breakdown.technical },
-      { bar: 'barNews', val: 'valNews', score: breakdown.news_sentiment },
+      { bar: 'barSignal', val: 'valSignal', score: breakdown.signal != null ? breakdown.signal : 50 },
       { bar: 'barFundamental', val: 'valFundamental', score: breakdown.fundamental },
+      { bar: 'barMacro', val: 'valMacro', score: breakdown.macro != null ? breakdown.macro : 50 },
+      { bar: 'barRisk', val: 'valRisk', score: breakdown.risk != null ? breakdown.risk : 50 },
       { bar: 'barRelated', val: 'valRelated', score: breakdown.related_momentum },
+      { bar: 'barNews', val: 'valNews', score: breakdown.news_sentiment },
     ];
 
     items.forEach(item => {
@@ -132,7 +131,7 @@ const ScoreGauge = {
     const data = history.map(h => h.score);
     const first = data[0];
     const last = data[data.length - 1];
-    const color = last >= first ? '#34d399' : '#f87171';
+    const color = last >= first ? '#2dd4a0' : '#ef6b6b';
 
     this._historyChart = new Chart(ctx, {
       type: 'line',
@@ -153,9 +152,9 @@ const ScoreGauge = {
         responsive: true,
         maintainAspectRatio: false,
         plugins: { legend: { display: false }, tooltip: {
-          backgroundColor: '#21253a',
-          titleColor: '#e8eaed',
-          bodyColor: '#9aa0a6',
+          backgroundColor: '#1e2438',
+          titleColor: '#e6e8ec',
+          bodyColor: '#8f96a3',
           callbacks: {
             label(ctx) { return `점수: ${ctx.parsed.y.toFixed(1)}`; }
           }

@@ -1,6 +1,10 @@
-"""한국어 금융 감성분석 — 부정어 처리 + 제목 가중 + 문맥 인식."""
+"""한국어 금융 감성분석 — KR-FinBERT 앙상블 + 부정어 처리 + 제목 가중 + 문맥 인식."""
 
 from __future__ import annotations
+
+import logging
+
+logger = logging.getLogger(__name__)
 
 # ── 긍정 키워드 (가중치) ──
 
@@ -116,17 +120,12 @@ def _score_text(text: str) -> tuple[float, float]:
     return pos_score, neg_score
 
 
-def analyze_sentiment(
+def _keyword_sentiment(
     title: str,
     body: str = "",
     title_weight: float = 2.5,
 ) -> tuple[float, str]:
-    """제목 + 본문 감성분석. 제목에 더 높은 가중치 부여.
-
-    Args:
-        title: 기사 제목
-        body: 기사 본문 (없으면 빈 문자열)
-        title_weight: 제목 점수 배율 (기본 2.5x)
+    """키워드 기반 감성분석 (내부 함수).
 
     Returns:
         (score, label) — score: -1.0~1.0, label: 긍정/부정/중립
@@ -159,6 +158,55 @@ def analyze_sentiment(
         label = "중립"
 
     return round(score, 3), label
+
+
+def analyze_sentiment(
+    title: str,
+    body: str = "",
+    title_weight: float = 2.5,
+) -> tuple[float, str, str]:
+    """제목 + 본문 감성분석. KR-FinBERT 앙상블 또는 키워드 기반.
+
+    FinBERT 가용 시: FinBERT 0.7 + 키워드 0.3 앙상블
+    FinBERT 미가용 시: 기존 키워드 방식 100%
+
+    Args:
+        title: 기사 제목
+        body: 기사 본문 (없으면 빈 문자열)
+        title_weight: 제목 점수 배율 (기본 2.5x)
+
+    Returns:
+        (score, label, method) — score: -1.0~1.0, label: 긍정/부정/중립,
+        method: "finbert_ensemble" 또는 "keyword"
+    """
+    # 키워드 기반 점수
+    kw_score, kw_label = _keyword_sentiment(title, body, title_weight)
+
+    # FinBERT 시도
+    try:
+        from backend.services.finbert_service import finbert
+        if finbert.available:
+            # 제목 기반 FinBERT 분석 (제목이 감성 판단에 가장 중요)
+            fb_result = finbert.analyze(title)
+            if fb_result is not None:
+                fb_score = fb_result["score"]
+                # 앙상블: FinBERT 70% + 키워드 30%
+                ensemble_score = round(fb_score * 0.7 + kw_score * 0.3, 3)
+
+                if ensemble_score > 0.12:
+                    label = "긍정"
+                elif ensemble_score < -0.12:
+                    label = "부정"
+                else:
+                    label = "중립"
+
+                return ensemble_score, label, "finbert_ensemble"
+    except ImportError:
+        pass
+    except Exception as e:
+        logger.warning("FinBERT ensemble failed, falling back to keyword: %s", e)
+
+    return kw_score, kw_label, "keyword"
 
 
 def sentiment_to_score(sentiment: float) -> float:

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Optional
+
 from pydantic import BaseModel
 
 
@@ -76,6 +78,8 @@ class NewsArticle(BaseModel):
     summary: str
     sentiment_score: float  # -1.0 ~ 1.0
     sentiment_label: str  # 긍정, 부정, 중립
+    finbert_score: Optional[float] = None  # KR-FinBERT 감성점수 (-1~1)
+    finbert_confidence: Optional[float] = None  # KR-FinBERT 신뢰도 (0~1)
 
 
 class NewsResult(BaseModel):
@@ -89,18 +93,81 @@ class NewsResult(BaseModel):
     neutral_count: int
 
 
+# ── 매크로 스코어 ──
+
+class MacroBreakdown(BaseModel):
+    us_market: float = 0.0
+    fx: float = 0.0
+    rates: float = 0.0
+    rate_spread: float = 0.0
+    commodities: float = 0.0
+    china: float = 0.0
+    event_risk: float = 0.0
+
+
+class MacroScore(BaseModel):
+    score: float = 50.0
+    breakdown: MacroBreakdown = MacroBreakdown()
+    details: dict = {}
+    events: list[dict] = []
+    updated_at: str = ""
+
+
+# ── 시그널 스코어 ──
+
+class SignalBreakdown(BaseModel):
+    momentum: float = 0.0
+    mean_reversion: float = 0.0
+    breakout: float = 0.0
+    regime: str = "UNKNOWN"
+    regime_score: float = 0.0
+
+
+class SignalScore(BaseModel):
+    score: float = 50.0
+    action_label: str = "중립"
+    breakdown: SignalBreakdown = SignalBreakdown()
+    buy_signals: list[str] = []
+    sell_signals: list[str] = []
+
+
+# ── 리스크 스코어 ──
+
+class RiskBreakdown(BaseModel):
+    volatility: float = 0.0
+    mdd: float = 0.0
+    var_cvar: float = 0.0
+    liquidity: float = 0.0
+
+
+class RiskScore(BaseModel):
+    score: float = 50.0
+    grade: str = "C"
+    breakdown: RiskBreakdown = RiskBreakdown()
+    position_size_pct: float = 0.0
+    atr: float | None = None
+
+
+# ── 종합 스코어링 ──
+
 class ScoreBreakdown(BaseModel):
     technical: float  # 0~100
     news_sentiment: float
     fundamental: float
     related_momentum: float
+    macro: float = 50.0
+    signal: float = 50.0
+    risk: float = 50.0
 
 
 class ScoringResult(BaseModel):
     code: str
     name: str
     total_score: float  # 0~100
-    signal: str  # 강한상승, 상승, 중립, 하락, 강한하락
+    signal: str  # 강력매수, 매수, 중립, 매도, 강력매도, 관망, 강한상승(하위호환)
     breakdown: ScoreBreakdown
     details: dict
     updated_at: str
+    action_label: str = "중립"  # 7단계 라벨
+    risk_grade: str = "C"  # A-E
+    macro_score: float = 50.0

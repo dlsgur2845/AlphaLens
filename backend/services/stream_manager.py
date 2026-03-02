@@ -30,6 +30,10 @@ class StreamManager:
         self._last_prices: dict[str, dict] = {}
         self._last_news_ids: dict[str, set[str]] = {}
 
+        # 동시 접근 보호 및 디바운스
+        self._lock = asyncio.Lock()
+        self._recalc_debounce: dict[str, asyncio.Task] = {}
+
     async def start(self) -> None:
         if self._running:
             return
@@ -48,12 +52,23 @@ class StreamManager:
         self._tasks.clear()
         logger.info("StreamManager stopped")
 
+    async def _cleanup_stale(self, active_codes: set[str]) -> None:
+        """구독 해제된 종목의 캐시 데이터 정리."""
+        async with self._lock:
+            for code in list(self._last_prices.keys()):
+                if code not in active_codes:
+                    del self._last_prices[code]
+            for code in list(self._last_news_ids.keys()):
+                if code not in active_codes:
+                    del self._last_news_ids[code]
+
     # ── 가격 폴링 루프 ──────────────────────────────
 
     async def _price_loop(self) -> None:
         while self._running:
             try:
                 codes = self._conn_mgr.get_subscribed_codes()
+                await self._cleanup_stale(codes)
                 if codes:
                     await self._poll_prices(codes)
 
@@ -79,17 +94,19 @@ class StreamManager:
                 if price_data is None:
                     return
 
-                # 변경 감지
-                last = self._last_prices.get(code)
-                changed = (
-                    last is None
-                    or last.get("price") != price_data["price"]
-                    or last.get("volume") != price_data["volume"]
-                )
+                # 변경 감지 (Lock으로 보호)
+                async with self._lock:
+                    last = self._last_prices.get(code)
+                    changed = (
+                        last is None
+                        or last.get("price") != price_data["price"]
+                        or last.get("volume") != price_data["volume"]
+                    )
+
+                    if changed:
+                        self._last_prices[code] = price_data
 
                 if changed:
-                    self._last_prices[code] = price_data
-
                     # 캐시 무효화 → 다음 HTTP 요청도 최신 데이터
                     cache.delete(f"detail:{code}")
                     cache.delete(f"scoring:{code}")
@@ -97,8 +114,8 @@ class StreamManager:
                     # 브로드캐스트
                     await self._conn_mgr.broadcast(code, "price_update", price_data)
 
-                    # 스코어링 재계산 (비동기)
-                    asyncio.create_task(self._recalc_scoring(code))
+                    # 스코어링 재계산 (디바운스)
+                    asyncio.create_task(self._debounced_recalc(code))
 
             except Exception:
                 logger.debug("Price poll failed for %s", code, exc_info=True)
@@ -180,22 +197,19 @@ class StreamManager:
     async def _poll_news(self, codes: set[str]) -> None:
         from backend.services.news_service import get_stock_news
 
-        for code in codes:
+        async def _poll_one_news(code: str) -> None:
             try:
-                # 캐시 무효화 후 최신 뉴스 가져오기
                 cache.delete(f"news:{code}:20")
                 news_result = await get_stock_news(code, max_articles=20)
 
-                # 새 기사 ID 추출
                 current_ids = {a.link for a in news_result.articles}
-                last_ids = self._last_news_ids.get(code, set())
+                async with self._lock:
+                    last_ids = self._last_news_ids.get(code, set())
+                    new_ids = current_ids - last_ids
+                    self._last_news_ids[code] = current_ids
 
-                new_ids = current_ids - last_ids
-                self._last_news_ids[code] = current_ids
-
-                # 첫 폴링이면 초기화만 (전체 브로드캐스트 안 함)
                 if not last_ids:
-                    continue
+                    return
 
                 if new_ids:
                     new_articles = [
@@ -221,14 +235,27 @@ class StreamManager:
                         "neutral_count": news_result.neutral_count,
                     })
 
-                    # 뉴스 변경 시 스코어링도 재계산
                     cache.delete(f"scoring:{code}")
-                    asyncio.create_task(self._recalc_scoring(code))
+                    asyncio.create_task(self._debounced_recalc(code))
 
             except Exception:
                 logger.debug("News poll failed for %s", code, exc_info=True)
 
-    # ── 스코어링 재계산 ─────────────────────────────
+        await asyncio.gather(*[_poll_one_news(code) for code in codes], return_exceptions=True)
+
+    # ── 스코어링 재계산 (디바운스) ──────────────────
+
+    async def _debounced_recalc(self, code: str) -> None:
+        """디바운스된 스코어링 재계산 트리거."""
+        if code in self._recalc_debounce:
+            self._recalc_debounce[code].cancel()
+        self._recalc_debounce[code] = asyncio.create_task(self._delayed_recalc(code))
+
+    async def _delayed_recalc(self, code: str) -> None:
+        """1초 대기 후 실제 재계산 실행."""
+        await asyncio.sleep(1.0)
+        await self._recalc_scoring(code)
+        self._recalc_debounce.pop(code, None)
 
     async def _recalc_scoring(self, code: str) -> None:
         try:
@@ -239,11 +266,16 @@ class StreamManager:
                 "code": result.code,
                 "total_score": result.total_score,
                 "signal": result.signal,
+                "action_label": result.action_label,
+                "risk_grade": result.risk_grade,
                 "breakdown": {
                     "technical": result.breakdown.technical,
                     "news_sentiment": result.breakdown.news_sentiment,
                     "fundamental": result.breakdown.fundamental,
                     "related_momentum": result.breakdown.related_momentum,
+                    "macro": result.breakdown.macro,
+                    "signal": result.breakdown.signal,
+                    "risk": result.breakdown.risk,
                 },
                 "updated_at": result.updated_at,
             })

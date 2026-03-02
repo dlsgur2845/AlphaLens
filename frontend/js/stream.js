@@ -192,9 +192,9 @@ const AlphaStream = {
         data.overall_label === '부정' ? 'var(--red)' : 'var(--yellow)';
 
       summaryEl.innerHTML = `
-        <span style="color:${sentColor}">${data.overall_label}</span>
+        <span style="color:${sentColor}">${escapeHTML(data.overall_label)}</span>
         <span style="color:var(--text-muted)">
-          (긍정 ${data.positive_count} / 부정 ${data.negative_count} / 중립 ${data.neutral_count})
+          (긍정 ${escapeHTML(data.positive_count)} / 부정 ${escapeHTML(data.negative_count)} / 중립 ${escapeHTML(data.neutral_count)})
         </span>
       `;
     }
@@ -209,19 +209,20 @@ const AlphaStream = {
       const el = document.createElement('a');
       el.href = article.link;
       el.target = '_blank';
+      el.rel = 'noopener noreferrer';
       el.className = 'news-item news-item-new';
       el.title = article.title;
       el.innerHTML = `
-        <div class="news-sentiment-badge ${sentClass}">${article.sentiment_label}</div>
+        <div class="news-sentiment-badge ${sentClass}">${escapeHTML(article.sentiment_label)}</div>
         <div class="news-item-content">
           <div class="news-item-title">
             <span class="news-new-badge">NEW</span>
-            ${article.title}
+            ${escapeHTML(article.title)}
           </div>
           <div class="news-item-meta">
-            <span>${article.source}</span>
-            <span>${article.date}</span>
-            <span class="news-item-score ${sentClass}">${scoreSign}${article.sentiment_score.toFixed(2)}</span>
+            <span>${escapeHTML(article.source)}</span>
+            <span>${escapeHTML(article.date)}</span>
+            <span class="news-item-score ${sentClass}">${escapeHTML(scoreSign)}${escapeHTML(article.sentiment_score.toFixed(2))}</span>
           </div>
         </div>
       `;
@@ -250,11 +251,13 @@ const AlphaStream = {
     const scoreVal = document.getElementById('scoreValue');
     if (scoreVal) scoreVal.textContent = data.total_score.toFixed(1);
 
-    // 시그널
+    // 7단계 시그널 라벨
+    const label = data.action_label || data.signal;
     const signalEl = document.getElementById('scoreSignal');
     if (signalEl && typeof ScoreGauge !== 'undefined') {
-      signalEl.textContent = data.signal;
-      signalEl.className = `score-signal ${ScoreGauge.getSignalClass(data.signal)}`;
+      const riskSuffix = data.risk_grade ? ` · 리스크 ${data.risk_grade}` : '';
+      signalEl.textContent = label + riskSuffix;
+      signalEl.className = `score-signal ${ScoreGauge.getSignalClass(label)}`;
     }
 
     // 업데이트 시간
@@ -265,7 +268,7 @@ const AlphaStream = {
         `${updated.toLocaleDateString('ko')} ${updated.toLocaleTimeString('ko', { hour: '2-digit', minute: '2-digit' })} 기준`;
     }
 
-    // 세부 점수 breakdown 바
+    // 세부 점수 breakdown 바 (7팩터)
     if (data.breakdown && typeof ScoreGauge !== 'undefined') {
       ScoreGauge.updateBreakdown(data.breakdown);
     }
