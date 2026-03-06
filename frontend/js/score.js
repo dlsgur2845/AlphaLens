@@ -58,11 +58,11 @@ const ScoreGauge = {
   },
 
   getColor(score) {
-    if (score >= 70) return '#2dd4a0';
-    if (score >= 55) return '#5eead4';
-    if (score >= 45) return '#f0b429';
-    if (score >= 30) return '#f9a8a8';
-    return '#ef6b6b';
+    if (score >= 70) return '#16a34a';
+    if (score >= 55) return '#22c55e';
+    if (score >= 45) return '#d97706';
+    if (score >= 30) return '#f87171';
+    return '#dc2626';
   },
 
   getSignalClass(signal) {
@@ -131,7 +131,7 @@ const ScoreGauge = {
     const data = history.map(h => h.score);
     const first = data[0];
     const last = data[data.length - 1];
-    const color = last >= first ? '#2dd4a0' : '#ef6b6b';
+    const color = last >= first ? '#16a34a' : '#dc2626';
 
     this._historyChart = new Chart(ctx, {
       type: 'line',
@@ -152,9 +152,10 @@ const ScoreGauge = {
         responsive: true,
         maintainAspectRatio: false,
         plugins: { legend: { display: false }, tooltip: {
-          backgroundColor: '#1e2438',
-          titleColor: '#e6e8ec',
-          bodyColor: '#8f96a3',
+          backgroundColor: '#1e293b',
+          titleColor: '#f1f5f9',
+          bodyColor: '#94a3b8',
+          borderColor: '#334155', borderWidth: 1,
           callbacks: {
             label(ctx) { return `점수: ${ctx.parsed.y.toFixed(1)}`; }
           }

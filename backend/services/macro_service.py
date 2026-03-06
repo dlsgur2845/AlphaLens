@@ -272,12 +272,12 @@ async def get_macro_score(sector: str | None = None) -> MacroScore:
         commodities = _commodity_signal(data)
         china = _china_signal(data)
 
-        # 지정학 리스크 → event_risk 반영
+        # 지정학 리스크 → event_risk 반영 (타임아웃 5초 - 매크로 계산 지연 방지)
         try:
-            geo_score = await get_geopolitical_risk_score()
+            geo_score = await asyncio.wait_for(get_geopolitical_risk_score(), timeout=5.0)
             # 30 이하 = 안정(+보너스), 30~60 = 중립, 60+ = 위험(감점)
             event_risk = float(np.clip(-(geo_score - 30) * 0.2, -10, 3))
-        except Exception:
+        except (asyncio.TimeoutError, Exception):
             logger.debug("Geopolitical risk unavailable, using neutral")
             geo_score = 20.0
             event_risk = 0.0
@@ -294,7 +294,7 @@ async def get_macro_score(sector: str | None = None) -> MacroScore:
             details={**data, "rate_spread": round(rate_spread, 2)},
             updated_at=datetime.now().isoformat(),
         )
-        cache.set(cache_key, cached, ttl=3600)
+        cache.set(cache_key, cached, ttl=600)
 
     # 섹터 베타 보정 적용
     beta = get_sector_beta(sector)

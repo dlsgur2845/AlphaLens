@@ -29,7 +29,7 @@ const candleWickPlugin = {
       const lowY = yScale.getPixelForValue(p.low);
 
       ctx.beginPath();
-      ctx.strokeStyle = p.close >= p.open ? '#ef4444' : '#3b82f6';
+      ctx.strokeStyle = p.close >= p.open ? '#dc2626' : '#1173d4';
       ctx.moveTo(x, highY);
       ctx.lineTo(x, lowY);
       ctx.stroke();
@@ -66,10 +66,10 @@ const PriceChart = {
         plugins: {
           legend: { display: false },
           tooltip: {
-            backgroundColor: '#1e2438',
-            titleColor: '#e6e8ec',
-            bodyColor: '#8f96a3',
-            borderColor: '#222840',
+            backgroundColor: '#1e293b',
+            titleColor: '#f1f5f9',
+            bodyColor: '#94a3b8',
+            borderColor: '#334155',
             borderWidth: 1,
             padding: 12,
             callbacks: {
@@ -106,14 +106,14 @@ const PriceChart = {
         },
         scales: {
           x: {
-            grid: { color: 'rgba(255,255,255,0.04)' },
-            ticks: { color: '#5a6173', maxTicksLimit: 8, font: { size: 11 } },
+            grid: { color: 'rgba(255,255,255,0.06)' },
+            ticks: { color: '#94a3b8', maxTicksLimit: 8, font: { size: 11 } },
           },
           y: {
             position: 'left',
-            grid: { color: 'rgba(255,255,255,0.04)' },
+            grid: { color: 'rgba(255,255,255,0.06)' },
             ticks: {
-              color: '#5a6173',
+              color: '#94a3b8',
               font: { size: 11 },
               callback(v) {
                 if (v >= 1e6) return (v / 1e6).toFixed(0) + 'M';
@@ -144,8 +144,8 @@ const PriceChart = {
           plugins: {
             legend: { display: false },
             tooltip: {
-              backgroundColor: '#1e2438', titleColor: '#e6e8ec',
-              bodyColor: '#8f96a3', borderColor: '#222840', borderWidth: 1, padding: 8,
+              backgroundColor: '#1e293b', titleColor: '#f1f5f9',
+              bodyColor: '#94a3b8', borderColor: '#334155', borderWidth: 1, padding: 8,
               callbacks: {
                 label(ctx) {
                   if (ctx.dataset.label === 'RSI') return ctx.parsed.y != null ? `RSI ${ctx.parsed.y.toFixed(1)}` : null;
@@ -158,9 +158,9 @@ const PriceChart = {
             x: { display: false },
             y: {
               min: 0, max: 100,
-              grid: { color: 'rgba(255,255,255,0.04)' },
+              grid: { color: 'rgba(255,255,255,0.06)' },
               ticks: {
-                color: '#5a6173', font: { size: 10 }, stepSize: 30,
+                color: '#94a3b8', font: { size: 10 }, stepSize: 30,
                 callback(v) { return v === 30 || v === 70 ? v : ''; },
               },
             },
@@ -257,14 +257,14 @@ const PriceChart = {
     const first = closes[0] || 0;
     const last = closes[closes.length - 1] || 0;
     const isUp = last >= first;
-    const color = isUp ? '#ef6b6b' : '#5b94ff';
+    const color = isUp ? '#dc2626' : '#1173d4';
 
     return {
       type: 'line',
       label: '종가',
       data: closes,
       borderColor: color,
-      backgroundColor: isUp ? 'rgba(239,107,107,0.08)' : 'rgba(91,148,255,0.08)',
+      backgroundColor: isUp ? 'rgba(220,38,38,0.08)' : 'rgba(17,115,212,0.08)',
       borderWidth: 2,
       pointRadius: 0,
       pointHoverRadius: 5,
@@ -278,9 +278,9 @@ const PriceChart = {
   _candleDataset(prices) {
     const data = prices.map((p) => [Math.min(p.open, p.close), Math.max(p.open, p.close)]);
     const bgColors = prices.map((p) =>
-      p.close >= p.open ? 'rgba(239,68,68,0.85)' : 'rgba(59,130,246,0.85)'
+      p.close >= p.open ? 'rgba(220,38,38,0.85)' : 'rgba(17,115,212,0.85)'
     );
-    const borderColors = prices.map((p) => (p.close >= p.open ? '#ef4444' : '#3b82f6'));
+    const borderColors = prices.map((p) => (p.close >= p.open ? '#dc2626' : '#1173d4'));
 
     return {
       type: 'bar',
@@ -309,7 +309,7 @@ const PriceChart = {
       }
     }
 
-    const colors = { 5: '#f0b429', 20: '#a78bfa', 60: '#f472b6' };
+    const colors = { 5: '#d97706', 20: '#7c3aed', 60: '#db2777' };
     const dashes = { 5: [], 20: [6, 3], 60: [2, 2] };
 
     return {
@@ -367,10 +367,10 @@ const PriceChart = {
   _volumeDataset(prices) {
     const volumes = prices.map((p) => p.volume);
     const colors = prices.map((p, i) => {
-      if (i === 0) return 'rgba(107,114,128,0.25)';
+      if (i === 0) return 'rgba(107,114,128,0.15)';
       return p.close >= prices[i - 1].close
-        ? 'rgba(239,107,107,0.25)'
-        : 'rgba(91,148,255,0.25)';
+        ? 'rgba(220,38,38,0.20)'
+        : 'rgba(17,115,212,0.20)';
     });
 
     return {
@@ -419,7 +419,7 @@ const PriceChart = {
     this.rsiChart.data.datasets = [
       {
         label: 'RSI', data: rsi,
-        borderColor: '#a78bfa', borderWidth: 1.5,
+        borderColor: '#7c3aed', borderWidth: 1.5,
         pointRadius: 0, pointHoverRadius: 3,
         fill: false, tension: 0.3, spanGaps: true,
       },

@@ -9,15 +9,10 @@ services:
     environment:
       - HOST=0.0.0.0
       - PORT=8000
+      - TZ=Asia/Seoul
+    volumes:
+      - hf-cache:/app/.hf_cache
     restart: unless-stopped
-    deploy:
-      resources:
-        limits:
-          cpus: '2.0'
-          memory: 2G
-        reservations:
-          cpus: '0.5'
-          memory: 512M
     stop_grace_period: 30s
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health')"]
@@ -25,3 +20,6 @@ services:
       timeout: 5s
       start_period: 10s
       retries: 3
+
+volumes:
+  hf-cache:

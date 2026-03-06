@@ -209,6 +209,21 @@ def analyze_sentiment(
     return kw_score, kw_label, "keyword"
 
 
+async def analyze_sentiment_enhanced(
+    title: str,
+    body: str = "",
+    title_weight: float = 2.5,
+) -> tuple[float, str, str]:
+    """감성분석 (async wrapper).
+
+    KR-FinBERT 앙상블 또는 키워드 기반 분석만 수행.
+
+    Returns:
+        (score, label, method)
+    """
+    return analyze_sentiment(title, body, title_weight)
+
+
 def sentiment_to_score(sentiment: float) -> float:
     """감성 점수(-1~1)를 스코어링 점수(0~100)로 변환."""
     return round((sentiment + 1) * 50, 2)

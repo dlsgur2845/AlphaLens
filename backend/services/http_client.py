@@ -31,12 +31,12 @@ async def startup() -> None:
     _desktop_client = httpx.AsyncClient(
         headers=DESKTOP_HEADERS,
         timeout=15.0,
-        limits=httpx.Limits(max_connections=30, max_keepalive_connections=15),
+        limits=httpx.Limits(max_connections=100, max_keepalive_connections=40),
     )
     _mobile_client = httpx.AsyncClient(
         headers=MOBILE_HEADERS,
         timeout=10.0,
-        limits=httpx.Limits(max_connections=30, max_keepalive_connections=15),
+        limits=httpx.Limits(max_connections=60, max_keepalive_connections=30),
     )
 
 

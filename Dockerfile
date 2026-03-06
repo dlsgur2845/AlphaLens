@@ -4,14 +4,19 @@ FROM python:3.12-slim AS builder
 WORKDIR /app
 
 COPY requirements.txt .
-RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
+
+# PyTorch CPU-only 먼저 설치 (CUDA 제거: ~3.5GB 절약), 그 후 나머지 의존성
+RUN pip install --no-cache-dir --prefix=/install \
+    torch --index-url https://download.pytorch.org/whl/cpu && \
+    pip install --no-cache-dir --prefix=/install -r requirements.txt
 
 # ── Stage 2: 런타임 ──
 FROM python:3.12-slim
 
 WORKDIR /app
 
-# 시스템 의존성 (curl 제거 - healthcheck에서 Python urllib 사용)
+# HuggingFace 캐시 경로 통일 (빌드/런타임 동일 경로 사용)
+ENV HF_HOME=/app/.hf_cache
 
 # non-root 사용자 생성
 RUN groupadd -r alphalens && useradd -r -g alphalens -d /app -s /sbin/nologin alphalens
@@ -23,6 +28,14 @@ COPY --from=builder /install /usr/local
 COPY backend/ backend/
 COPY frontend/ frontend/
 COPY run.py .
+
+# KR-FinBERT 모델을 빌드 타임에 미리 다운로드 (매 실행시 다운로드 방지)
+RUN mkdir -p $HF_HOME && \
+    python -c "\
+from transformers import AutoTokenizer, AutoModelForSequenceClassification; \
+AutoTokenizer.from_pretrained('snunlp/KR-FinBert-SC'); \
+AutoModelForSequenceClassification.from_pretrained('snunlp/KR-FinBert-SC'); \
+print('KR-FinBERT model cached successfully')"
 
 # 소유권 변경 및 non-root 전환
 RUN chown -R alphalens:alphalens /app

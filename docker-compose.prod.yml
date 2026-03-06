@@ -1,4 +1,10 @@
 services:
+  qwen:
+    provider:
+      type: model
+      options:
+        model: hf.co/unsloth/Qwen3.5-35B-A3B-GGUF:UD-Q2_K_XL
+
   postgres:
     image: postgres:16-alpine
     restart: unless-stopped
@@ -25,6 +31,7 @@ services:
       - HOST=0.0.0.0
       - PORT=8000
       - DATABASE_URL=postgresql+asyncpg://alphalens:${POSTGRES_PASSWORD:-alphalens_secret}@postgres:5432/alphalens
+      - LLM_BASE_URL=http://qwen/v1
     expose:
       - "8000"
     depends_on:

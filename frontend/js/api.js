@@ -20,6 +20,8 @@ function safeURL(url) {
 const API = {
   BASE: '/api/v1',
   TIMEOUT: 10000,
+  // 무거운 엔드포인트용 확장 타임아웃 (추천: 80종목 스코어링, 지정학: 18개 RSS)
+  LONG_TIMEOUT: 30000,
   _apiKey: '',
 
   setApiKey(key) {
@@ -34,7 +36,9 @@ const API = {
     return headers;
   },
 
-  async _fetch(url, retries = 1) {
+  async _fetch(url, retries = 1, timeout = null) {
+    const reqTimeout = timeout || this.TIMEOUT;
+
     if (!navigator.onLine) {
       Toast.show('네트워크 연결을 확인해주세요', 'error');
       throw new Error('오프라인 상태');
@@ -43,7 +47,7 @@ const API = {
     for (let attempt = 0; attempt <= retries; attempt++) {
       try {
         const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), this.TIMEOUT);
+        const timer = setTimeout(() => controller.abort(), reqTimeout);
 
         const res = await fetch(url, {
           signal: controller.signal,
@@ -67,8 +71,8 @@ const API = {
     }
   },
 
-  get(endpoint) {
-    return this._fetch(`${this.BASE}${endpoint}`);
+  get(endpoint, timeout = null) {
+    return this._fetch(`${this.BASE}${endpoint}`, 1, timeout);
   },
 
   searchStocks(query) {
@@ -83,8 +87,8 @@ const API = {
     return this.get(`/stocks/${code}/price?days=${days}`);
   },
 
-  getRelatedCompanies(code, depth = 2, max = 20) {
-    return this.get(`/related/${code}?depth=${depth}&max=${max}`);
+  getRelatedCompanies(code, depth = 1, max = 10) {
+    return this.get(`/related/${code}?depth=${depth}&max=${max}`, this.LONG_TIMEOUT);
   },
 
   getNews(code, maxArticles = 20) {
@@ -96,11 +100,15 @@ const API = {
   },
 
   getRecommendations() {
-    return this.get('/recommendations');
+    return this.get('/recommendations', this.LONG_TIMEOUT);
+  },
+
+  getMarketSummary() {
+    return this.get('/recommendations/market-summary');
   },
 
   getGeopolitical() {
-    return this.get('/geopolitical');
+    return this.get('/geopolitical', this.LONG_TIMEOUT);
   },
 };
 

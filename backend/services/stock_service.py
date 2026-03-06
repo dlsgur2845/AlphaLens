@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import time
 from datetime import datetime, timedelta
@@ -58,25 +59,43 @@ class CircuitBreaker:
             logger.warning("Circuit breaker opened after %d failures", self.failures)
 
 
-_cb_krx = CircuitBreaker(failure_threshold=3, reset_timeout=120)
-_cb_naver = CircuitBreaker(failure_threshold=3, reset_timeout=120)
+_cb_krx = CircuitBreaker(failure_threshold=3, reset_timeout=3600)  # 1시간 (Docker 환경에서 KRX 403)
+_cb_naver_desktop = CircuitBreaker(failure_threshold=5, reset_timeout=60)  # 네이버 웹 (가격 히스토리)
+_cb_naver_mobile = CircuitBreaker(failure_threshold=5, reset_timeout=60)  # 네이버 모바일 API (종목 상세)
+
+# 네이버 종목 목록 폴백 병렬 요청 동시성 제한 (커넥션 풀 포화 방지)
+_NAVER_LIST_SEMAPHORE = asyncio.Semaphore(5)
 
 # ---------------------------------------------------------------------------
-# Stock list with TTL
+# Stock list with TTL + 동시 호출 방지 락
 # ---------------------------------------------------------------------------
 _stock_list: list[dict] | None = None
 _stock_list_updated_at: float = 0
 _STOCK_LIST_TTL = 21600  # 6 hours
+_stock_list_lock: asyncio.Lock | None = None
+
+
+def _get_stock_list_lock() -> asyncio.Lock:
+    global _stock_list_lock
+    if _stock_list_lock is None:
+        _stock_list_lock = asyncio.Lock()
+    return _stock_list_lock
 
 
 async def _get_stock_list() -> list[dict]:
-    """Return cached stock list, refreshing if TTL expired."""
+    """Return cached stock list, refreshing if TTL expired. 동시 호출 시 락으로 중복 방지."""
     global _stock_list, _stock_list_updated_at
     if _stock_list is not None and (time.time() - _stock_list_updated_at) < _STOCK_LIST_TTL:
         return _stock_list
-    _stock_list = await _fetch_krx_stock_list()
-    _stock_list_updated_at = time.time()
-    return _stock_list
+
+    lock = _get_stock_list_lock()
+    async with lock:
+        # 더블체크 (다른 코루틴이 이미 갱신했을 수 있음)
+        if _stock_list is not None and (time.time() - _stock_list_updated_at) < _STOCK_LIST_TTL:
+            return _stock_list
+        _stock_list = await _fetch_krx_stock_list()
+        _stock_list_updated_at = time.time()
+        return _stock_list
 
 
 async def get_stock_name(code: str) -> str:
@@ -141,7 +160,7 @@ async def _fetch_krx_stock_list() -> list[dict]:
                 _cb_krx.record_success()
                 success = True
                 break
-            except (httpx.HTTPStatusError, httpx.RequestError) as e:
+            except (httpx.HTTPStatusError, httpx.RequestError, json.JSONDecodeError) as e:
                 logger.warning("KRX %s attempt %d failed: %s", mkt_name, attempt + 1, e)
                 _cb_krx.record_failure()
                 if attempt < 2:
@@ -157,43 +176,52 @@ async def _fetch_krx_stock_list() -> list[dict]:
 
 
 async def _fetch_naver_stock_list() -> list[dict]:
-    """네이버 금융에서 종목 목록 폴백."""
+    """네이버 금융에서 종목 목록 폴백 (병렬 요청)."""
     from bs4 import BeautifulSoup
 
-    results = []
     client = get_desktop_client()
-    for mkt, mkt_name in [("0", "KOSPI"), ("1", "KOSDAQ")]:
-        for page in range(1, 40):
-            try:
+
+    async def _fetch_page(mkt: str, mkt_name: str, page: int) -> list[dict]:
+        try:
+            async with _NAVER_LIST_SEMAPHORE:
                 url = (
                     f"https://finance.naver.com/sise/sise_market_sum.naver"
                     f"?sosok={mkt}&page={page}"
                 )
                 resp = await client.get(url)
-                soup = BeautifulSoup(resp.text, "lxml")
-                rows = soup.select("table.type_2 tbody tr")
+            soup = BeautifulSoup(resp.text, "lxml")
+            rows = soup.select("table.type_2 tbody tr")
 
-                found_any = False
-                for row in rows:
-                    link = row.select_one("a.tltle")
-                    if not link:
-                        continue
-                    found_any = True
-                    name = link.get_text(strip=True)
-                    href = link.get("href", "")
-                    code = href.split("code=")[-1] if "code=" in href else ""
-                    if code and len(code) == 6:
-                        results.append({
-                            "code": code,
-                            "name": name,
-                            "market": mkt_name,
-                        })
+            items = []
+            for row in rows:
+                link = row.select_one("a.tltle")
+                if not link:
+                    continue
+                name = link.get_text(strip=True)
+                href = link.get("href", "")
+                code = href.split("code=")[-1] if "code=" in href else ""
+                if code and len(code) == 6:
+                    items.append({
+                        "code": code,
+                        "name": name,
+                        "market": mkt_name,
+                    })
+            return items
+        except (httpx.HTTPStatusError, httpx.RequestError):
+            return []
 
-                if not found_any:
-                    break
-            except (httpx.HTTPStatusError, httpx.RequestError) as e:
-                logger.warning("네이버 종목 목록 폴백 실패 (시장=%s, 페이지=%d): %s", mkt_name, page, e)
-                break
+    # KOSPI + KOSDAQ 페이지 병렬 요청 (세마포어로 동시 요청 제한)
+    tasks = []
+    for mkt, mkt_name in [("0", "KOSPI"), ("1", "KOSDAQ")]:
+        for page in range(1, 40):
+            tasks.append(_fetch_page(mkt, mkt_name, page))
+
+    page_results = await asyncio.gather(*tasks, return_exceptions=True)
+
+    results = []
+    for items in page_results:
+        if isinstance(items, list):
+            results.extend(items)
 
     return results
 
@@ -236,8 +264,8 @@ async def get_stock_detail(code: str) -> StockDetail | None:
     if cached:
         return cached
 
-    if not _cb_naver.can_execute():
-        logger.warning("Naver circuit breaker open, skipping detail for %s", code)
+    if not _cb_naver_mobile.can_execute():
+        logger.warning("Naver mobile circuit breaker open, skipping detail for %s", code)
         return None
 
     client = get_mobile_client()
@@ -253,11 +281,11 @@ async def get_stock_detail(code: str) -> StockDetail | None:
             integ_resp.raise_for_status()
             basic = basic_resp.json()
             integ = integ_resp.json()
-            _cb_naver.record_success()
+            _cb_naver_mobile.record_success()
             break
-        except (httpx.HTTPStatusError, httpx.RequestError) as e:
+        except (httpx.HTTPStatusError, httpx.RequestError, json.JSONDecodeError) as e:
             logger.warning("종목 상세 API attempt %d failed (%s): %s", attempt + 1, code, e)
-            _cb_naver.record_failure()
+            _cb_naver_mobile.record_failure()
             if attempt < 2:
                 await asyncio.sleep(1 * (attempt + 1))
     if basic is None or integ is None:
@@ -401,8 +429,8 @@ async def get_price_history(code: str, days: int = 90) -> PriceHistory | None:
     if cached:
         return cached
 
-    if not _cb_naver.can_execute():
-        logger.warning("Naver circuit breaker open, skipping price history for %s", code)
+    if not _cb_naver_desktop.can_execute():
+        logger.warning("Naver desktop circuit breaker open, skipping price history for %s", code)
         return None
 
     from bs4 import BeautifulSoup
@@ -421,19 +449,20 @@ async def get_price_history(code: str, days: int = 90) -> PriceHistory | None:
             f"?code={code}&page={page}"
         )
         resp = None
-        for attempt in range(3):
+        for attempt in range(2):
             try:
                 resp = await client.get(url)
                 resp.raise_for_status()
-                _cb_naver.record_success()
+                _cb_naver_desktop.record_success()
                 break
             except (httpx.HTTPStatusError, httpx.RequestError) as e:
                 logger.warning("가격 히스토리 attempt %d failed (%s, page=%d): %s", attempt + 1, code, page, e)
-                _cb_naver.record_failure()
-                if attempt < 2:
-                    await asyncio.sleep(1 * (attempt + 1))
+                if attempt == 1:
+                    # 마지막 시도 실패 시에만 CB 기록 (한 페이지 실패당 1회만)
+                    _cb_naver_desktop.record_failure()
                 else:
-                    resp = None
+                    await asyncio.sleep(0.5)
+                resp = None
 
         if resp is None:
             break

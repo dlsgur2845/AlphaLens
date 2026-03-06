@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import html
 import logging
 from datetime import datetime
@@ -13,7 +12,6 @@ from backend.services.http_client import get_mobile_client
 from backend.utils.sentiment import analyze_sentiment
 
 logger = logging.getLogger(__name__)
-
 
 async def get_stock_news(
     stock_code: str,
@@ -85,7 +83,6 @@ async def get_stock_news(
     total_sentiment = 0.0
 
     for raw in raw_articles:
-        # 제목(가중) + 본문 분리 감성분석 (FinBERT 앙상블 또는 키워드)
         score, label, method = analyze_sentiment(raw["title"], raw.get("body", ""))
 
         # FinBERT 개별 결과 추출 (앙상블 시)

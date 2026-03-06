@@ -10,10 +10,10 @@ from bs4 import BeautifulSoup
 from backend.models.schemas import RelatedCompany
 from backend.services.cache_service import cache
 from backend.services.http_client import get_desktop_client
-from backend.services.stock_service import _fetch_krx_stock_list, get_price_history
+from backend.services.stock_service import _get_stock_list, get_price_history
 
 # 병렬 요청 동시성 제한 (네이버 rate limit 방지)
-_SEMAPHORE = asyncio.Semaphore(5)
+_SEMAPHORE = asyncio.Semaphore(3)
 
 # 주요 그룹 키워드
 GROUP_KEYWORDS = [
@@ -35,7 +35,7 @@ async def _get_group_companies(name: str, code: str) -> list[dict]:
     if not matched_keyword:
         return []
 
-    stocks = await _fetch_krx_stock_list()
+    stocks = await _get_stock_list()
     results = []
 
     for s in stocks:
@@ -120,7 +120,7 @@ async def _get_sector_companies(code: str) -> list[dict]:
                     pass
 
     # 시장 정보 보완
-    stocks = await _fetch_krx_stock_list()
+    stocks = await _get_stock_list()
     stock_map = {s["code"]: s["market"] for s in stocks}
     for r in results:
         if not r["market"]:
@@ -130,9 +130,14 @@ async def _get_sector_companies(code: str) -> list[dict]:
 
 
 async def _get_recent_change(code: str) -> float | None:
-    """최근 수익률 계산 (Semaphore로 동시성 제한)."""
-    async with _SEMAPHORE:
-        history = await get_price_history(code, days=10)
+    """최근 수익률 계산 (Semaphore + 타임아웃)."""
+    try:
+        async with _SEMAPHORE:
+            history = await asyncio.wait_for(
+                get_price_history(code, days=10), timeout=3.0,
+            )
+    except (asyncio.TimeoutError, Exception):
+        return None
     if not history or len(history.prices) < 2:
         return None
 
@@ -145,8 +150,8 @@ async def _get_recent_change(code: str) -> float | None:
 
 async def find_related_companies(
     stock_code: str,
-    max_depth: int = 2,
-    max_companies: int = 20,
+    max_depth: int = 1,
+    max_companies: int = 10,
 ) -> list[RelatedCompany]:
     """BFS 기반 관련기업 탐색. visited set으로 무한루프 방지."""
 
@@ -160,7 +165,7 @@ async def find_related_companies(
     results: list[RelatedCompany] = []
 
     # 시작 종목 이름 조회
-    stocks = await _fetch_krx_stock_list()
+    stocks = await _get_stock_list()
     root_name = stock_code
     for s in stocks:
         if s["code"] == stock_code:
@@ -202,7 +207,7 @@ async def find_related_companies(
             visited.add(item["code"])
             new_items.append(item)
 
-        # 수익률 병렬 계산 (Semaphore로 동시 요청 5개 제한)
+        # 수익률 병렬 계산 (Semaphore로 동시 요청 3개 제한)
         if new_items:
             change_results = await asyncio.gather(
                 *[_get_recent_change(item["code"]) for item in new_items],

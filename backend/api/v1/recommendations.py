@@ -14,7 +14,7 @@ from backend.services import scoring_service
 from backend.utils.auth import verify_api_key
 from backend.services.http_client import get_mobile_client
 from backend.services.macro_service import get_macro_score
-from backend.services.stock_service import _fetch_krx_stock_list
+from backend.services.stock_service import _get_stock_list
 from backend.services.recommendation_logic import (
     format_stock_item,
     derive_key_factors,
@@ -26,8 +26,8 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(dependencies=[Depends(verify_api_key)])
 
-# 동시 스코어링 세마포어 (외부 API 부하 제어)
-_CONCURRENCY_LIMIT = 10
+# 동시 스코어링 세마포어 (외부 API 부하 제어, 다른 API 연결 여유 확보)
+_CONCURRENCY_LIMIT = 5
 _CACHE_KEY_PREFIX = "recommendations"
 _CACHE_TTL = 300  # 5분
 
@@ -36,11 +36,16 @@ _refresh_lock = asyncio.Lock()
 
 
 async def _score_single(code: str, semaphore: asyncio.Semaphore) -> dict | None:
-    """세마포어 제한 하에 단일 종목 스코어링. 실패 시 None 반환."""
+    """세마포어 제한 하에 단일 종목 스코어링. 실패/타임아웃 시 None 반환."""
     async with semaphore:
         try:
-            result = await scoring_service.calculate_score(code)
+            result = await asyncio.wait_for(
+                scoring_service.calculate_score(code), timeout=15.0,
+            )
             return result
+        except asyncio.TimeoutError:
+            logger.warning("종목 스코어링 타임아웃 (%s)", code)
+            return None
         except Exception as e:
             logger.warning("종목 스코어링 실패 (%s): %s", code, e)
             return None
@@ -112,7 +117,7 @@ async def _build_market_summary() -> dict:
         "updated_at": datetime.now().isoformat(),
     }
 
-    cache.set(cache_key, summary, ttl=1800)  # 30분 캐시
+    cache.set(cache_key, summary, ttl=300)  # 5분 캐시
     return summary
 
 
@@ -121,7 +126,7 @@ async def _build_recommendations(top_n: int = 5) -> dict:
     start_time = time.time()
 
     # KOSPI + KOSDAQ 종목 리스트 가져오기
-    all_stocks = await _fetch_krx_stock_list()
+    all_stocks = await _get_stock_list()
     if not all_stocks:
         return {
             "recommended": [],
@@ -183,7 +188,7 @@ async def _build_recommendations(top_n: int = 5) -> dict:
 
 
 async def _get_or_refresh_recommendations(top_n: int = 5) -> dict:
-    """캐시된 추천 결과 반환. 만료 시 백그라운드 갱신."""
+    """캐시된 추천 결과 반환. 만료 시 갱신."""
     cache_key = f"{_CACHE_KEY_PREFIX}:top_{top_n}"
     cached = cache.get(cache_key)
     if cached is not None:
@@ -201,6 +206,17 @@ async def _get_or_refresh_recommendations(top_n: int = 5) -> dict:
         return result
 
 
+@router.get("/market-summary")
+async def get_market_summary():
+    """시장 요약 API (매크로 + 지수). 추천 스코어링과 독립적으로 빠르게 반환."""
+    try:
+        summary = await _build_market_summary()
+        return {"market_summary": summary, "updated_at": datetime.now().isoformat()}
+    except Exception:
+        logger.exception("시장 요약 생성 실패")
+        raise HTTPException(status_code=500, detail="시장 요약 데이터를 불러올 수 없습니다")
+
+
 @router.get("")
 async def get_recommendations(
     top_n: int = Query(5, ge=1, le=20, description="추천/비추천 종목 수"),
@@ -213,7 +229,7 @@ async def get_recommendations(
     """
     try:
         return await _get_or_refresh_recommendations(top_n)
-    except Exception as e:
+    except Exception:
         logger.exception("추천 목록 생성 실패")
         raise HTTPException(
             status_code=500,

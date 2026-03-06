@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from backend.models.schemas import PriceHistory, StockDetail, StockSearchResult
 from backend.services import stock_service
-from backend.services.stock_service import _fetch_krx_stock_list
+from backend.services.stock_service import _get_stock_list
 from backend.utils.auth import verify_api_key
 from backend.utils.validators import validate_stock_code
 
@@ -27,7 +27,7 @@ async def screener(
     limit: int = Query(50, ge=1, le=200),
 ):
     """간이 종목 스크리너 - 시장별 종목 목록."""
-    stocks = await _fetch_krx_stock_list()
+    stocks = await _get_stock_list()
     if market:
         stocks = [s for s in stocks if s["market"] == market.upper()]
     total = len(stocks)

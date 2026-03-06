@@ -1,4 +1,7 @@
 {
+  "env": {
+    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
+  },
   "permissions": {
     "allow": [
       "WebFetch(domain:github.com)",
@@ -24,10 +27,21 @@
       "Bash(docker version:*)",
       "Bash(python:*)",
       "Bash(docker ps:*)",
-      "Bash(node:*)"
+      "Bash(node:*)",
+      "Bash(python3:*)",
+      "Bash(cygpath:*)",
+      "Bash(docker exec alphalens curl -s --max-time 30 http://localhost:8000/api/v1/geopolitical)",
+      "Bash(docker exec alphalens curl -s --max-time 60 http://localhost:8000/api/v1/scoring/005930)",
+      "Bash(docker exec:*)",
+      "Bash(pip install:*)",
+      "WebFetch(domain:cdn.jsdelivr.net)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(docker model:*)",
+      "Bash(docker images:*)",
+      "Bash(docker run:*)",
+      "Bash(docker image:*)",
+      "Bash(docker restart:*)"
     ]
-  },
-  "env": {
-    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
   }
 }

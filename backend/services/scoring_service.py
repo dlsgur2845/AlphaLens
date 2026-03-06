@@ -195,12 +195,15 @@ async def calculate_score(code: str) -> ScoringResult:
     # 이름 조회
     name = await get_stock_name(code)
 
-    # 병렬 로드 (return_exceptions=True로 개별 실패 허용)
+    # 병렬 로드 (개별 타임아웃 + return_exceptions=True)
+    async def _with_timeout(coro, timeout_sec: float):
+        return await asyncio.wait_for(coro, timeout=timeout_sec)
+
     results = await asyncio.gather(
-        get_price_history(code, days=200),  # 200일 MA 계산을 위해 확장
-        get_stock_detail(code),
-        get_stock_news(code, stock_name=name, max_articles=15),
-        _calc_related_score(code),
+        _with_timeout(get_price_history(code, days=200), 15.0),
+        _with_timeout(get_stock_detail(code), 10.0),
+        _with_timeout(get_stock_news(code, stock_name=name, max_articles=15), 10.0),
+        _with_timeout(_calc_related_score(code), 20.0),
         return_exceptions=True,
     )
 
@@ -292,7 +295,7 @@ async def calculate_score(code: str) -> ScoringResult:
     # 5) 매크로 점수 (15%)
     macro_score = 50.0
     try:
-        macro_result = await get_macro_score(sector)
+        macro_result = await asyncio.wait_for(get_macro_score(sector), timeout=20.0)
         macro_score = macro_result.score
         all_details["macro"] = {
             "score": macro_result.score,
@@ -305,8 +308,11 @@ async def calculate_score(code: str) -> ScoringResult:
             },
             "details": macro_result.details,
         }
+    except asyncio.TimeoutError:
+        logger.warning("매크로 점수 타임아웃 (%s)", code)
+        all_details["macro"] = {"error": "timeout"}
     except Exception as e:
-        logger.warning("매크로 점수 계산 실패 (%s): %s", code, e)
+        logger.warning("매크로 점수 계산 실패 (%s): %s %s", code, type(e).__name__, e)
         all_details["macro"] = {"error": "calculation_failed"}
 
     # 6) 리스크 점수 (10%)

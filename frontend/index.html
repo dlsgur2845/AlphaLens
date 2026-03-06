@@ -3,410 +3,436 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="AlphaLens - 국내 주식 AI 스코어링 분석 플랫폼. 기술적 분석, 뉴스 감성, 펀더멘탈, 관련기업 모멘텀 종합 평가.">
-  <meta name="theme-color" content="#0f1117">
-  <meta property="og:title" content="AlphaLens - 국내 주식 AI 스코어링">
-  <meta property="og:description" content="멀티팩터 기반 국내 주식 종합 분석 플랫폼">
-  <meta property="og:type" content="website">
-  <title>AlphaLens - 국내 주식 분석</title>
+  <meta name="description" content="AlphaLens - 국내 주식 AI 스코어링 분석 플랫폼">
+  <meta name="theme-color" content="#101922">
+  <title>AlphaLens - 주식 분석</title>
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="manifest" href="/manifest.json">
-  <link rel="stylesheet" as="style" crossorigin="anonymous" integrity="sha384-GIdEBaqGN9mNkDkMkzMHW8EKUqtpPIe/sLj1X7DIrnc9uPtLROJgmuDlh+3rBw0j" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css" />
-  <link rel="stylesheet" href="/css/style.css">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/style.css?v=8">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js" integrity="sha384-vsrfeLOOY6KuIYKDlmVH5UiBmgIdB1oEf7p01YgWHuqmOHfZr374+odEv96n9tNC" crossorigin="anonymous"></script>
-  <noscript><style>.main{display:flex;justify-content:center;align-items:center;min-height:80vh;}.noscript-msg{color:#e8eaed;text-align:center;}</style></noscript>
+  <noscript><style>.app-content{display:flex;justify-content:center;align-items:center;min-height:80vh;}.noscript-msg{color:#94a3b8;text-align:center;}</style></noscript>
 </head>
 <body>
-  <!-- 헤더 -->
-  <header class="header">
+<div class="app-shell">
+
+  <!-- Top Header -->
+  <header class="top-header">
     <div class="header-left">
-      <h1 class="logo" id="logoHome" style="cursor:pointer" title="홈으로 (Esc)">AlphaLens</h1>
-      <span class="tagline">국내 주식 AI 스코어링</span>
-      <span id="liveBadge" class="live-badge disconnected">OFFLINE</span>
+      <div class="logo-wrap" id="logoHome" style="cursor:pointer" title="홈으로 (Esc)">
+        <h1 class="logo-text">주가분석</h1>
+      </div>
+      <nav class="header-nav">
+        <a class="header-link" href="#" data-nav="favorites">관심종목</a>
+        <a class="header-link" href="#" data-nav="market">시장</a>
+        <a class="header-link" href="#" data-nav="recommend">추천</a>
+      </nav>
     </div>
     <div class="header-right">
       <div class="search-container">
+        <span class="material-symbols-outlined search-icon">search</span>
         <label for="searchInput" class="sr-only">종목 검색</label>
-        <input type="text" id="searchInput" placeholder="종목명 또는 코드 검색 (/)" autocomplete="off">
+        <input type="text" id="searchInput" placeholder="종목 코드 또는 명칭 검색" autocomplete="off">
         <div id="searchResults" class="search-dropdown"></div>
       </div>
-      <button id="compareBtn" class="header-btn" title="종목 비교" style="display:none">비교</button>
     </div>
   </header>
 
-  <!-- 메인 -->
-  <main class="main">
-    <noscript><div class="noscript-msg"><h2>JavaScript를 활성화해주세요</h2><p>AlphaLens는 JavaScript가 필요합니다.</p></div></noscript>
-
-    <!-- 초기 화면 -->
-    <div id="welcomeScreen" class="welcome">
-      <div class="welcome-content">
-        <div class="welcome-hero">
-          <div class="welcome-hero-badge">AI-Powered Analysis</div>
-          <h2>종목을 검색하세요</h2>
-          <p>삼성전자, 005930 등으로 검색하면 AI 기반 스코어링 분석을 제공합니다.</p>
-        </div>
-
-        <!-- 즐겨찾기 섹션 -->
-        <div id="favoritesSection" class="welcome-section" style="display:none">
-          <div class="welcome-section-header">
-            <span class="welcome-section-title">즐겨찾기</span>
-            <button class="clear-btn" id="clearFavorites">지우기</button>
-          </div>
-          <div class="stock-cards-grid" id="favoritesGrid"></div>
-        </div>
-
-        <!-- 최근 검색 섹션 -->
-        <div id="recentSection" class="welcome-section" style="display:none">
-          <div class="welcome-section-header">
-            <span class="welcome-section-title">최근 검색</span>
-            <button class="clear-btn" id="clearRecent">지우기</button>
-          </div>
-          <div class="stock-cards-grid" id="recentGrid"></div>
-        </div>
-
-        <!-- 시장 요약 -->
-        <div id="marketSummarySection" class="welcome-section" style="display:none">
-          <div class="welcome-section-header">
-            <span class="welcome-section-title">시장 환경</span>
-            <span class="market-summary-time" id="marketSummaryTime"></span>
-          </div>
-          <div class="market-summary-card" id="marketSummaryCard">
-            <div class="market-summary-row">
-              <div class="market-index-item" id="msKospi">
-                <div class="market-index-label">KOSPI</div>
-                <div class="market-index-value">-</div>
-                <div class="market-index-change">-</div>
-              </div>
-              <div class="market-index-item" id="msKosdaq">
-                <div class="market-index-label">KOSDAQ</div>
-                <div class="market-index-value">-</div>
-                <div class="market-index-change">-</div>
-              </div>
-              <div class="market-index-item" id="msUsdKrw">
-                <div class="market-index-label">USD/KRW</div>
-                <div class="market-index-value">-</div>
-                <div class="market-index-change">-</div>
-              </div>
-              <div class="market-index-item market-macro-score" id="msMacro">
-                <div class="market-index-label">매크로 점수</div>
-                <div class="market-index-value">-</div>
-                <div class="market-macro-label" id="msMacroLabel">-</div>
-              </div>
-            </div>
-            <div class="market-summary-bottom">
-              <div class="market-factors" id="msKeyFactors"></div>
-              <div class="market-sector-outlook" id="msSectorOutlook"></div>
-            </div>
-          </div>
-        </div>
-
-        <!-- 지정학 리스크 대시보드 -->
-        <div id="geopoliticalSection" class="welcome-section" style="display:none">
-          <div class="welcome-section-header">
-            <span class="welcome-section-title">지정학 리스크</span>
-            <span class="geo-update-time" id="geoUpdateTime"></span>
-          </div>
-          <div class="geo-dashboard" aria-label="지정학 리스크 대시보드" role="region">
-            <!-- 리스크 인덱스 -->
-            <div class="geo-risk-index" id="geoRiskIndex">
-              <div class="geo-risk-gauge" aria-label="리스크 점수">
-                <div class="geo-risk-score" id="geoRiskScore" aria-live="polite">-</div>
-                <div class="geo-risk-label" id="geoRiskLabel">분석 중...</div>
-              </div>
-              <div class="geo-risk-bar-wrap">
-                <div class="geo-risk-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="geoRiskBar">
-                  <div class="geo-risk-bar-fill" id="geoRiskBarFill" style="width:0%"></div>
-                </div>
-                <div class="geo-risk-bar-labels" aria-hidden="true">
-                  <span>안정</span><span>주의</span><span>경계</span><span>위험</span>
-                </div>
-              </div>
-            </div>
-            <!-- 우측 컬럼: 이벤트 + 섹터 + 트리거 -->
-            <div class="geo-right-col" aria-live="polite">
-              <div>
-                <div class="geo-section-label" id="geoEventsLabel">감지된 이벤트</div>
-                <div class="geo-events" id="geoEvents" role="list" aria-labelledby="geoEventsLabel"></div>
-              </div>
-              <div>
-                <div class="geo-section-label" id="geoSectorLabel">섹터별 영향</div>
-                <div class="geo-sector-impacts" id="geoSectorImpacts" role="list" aria-labelledby="geoSectorLabel"></div>
-              </div>
-              <div>
-                <div class="geo-section-label" id="geoTriggersLabel">시나리오 트리거</div>
-                <div class="geo-triggers" id="geoTriggers" role="list" aria-labelledby="geoTriggersLabel"></div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- AI 추천 종목 -->
-        <div id="recommendSection" class="welcome-section" style="display:none">
-          <div class="welcome-section-header">
-            <span class="welcome-section-title">AI 추천 종목</span>
-            <span class="recommend-update-time" id="recommendUpdateTime"></span>
-          </div>
-          <div class="recommend-grid" id="recommendGrid">
-            <div class="skeleton-block"></div>
-          </div>
-        </div>
-
-        <!-- 주의 종목 -->
-        <div id="avoidSection" class="welcome-section" style="display:none">
-          <div class="welcome-section-header">
-            <span class="welcome-section-title">주의 종목</span>
-          </div>
-          <div class="recommend-grid" id="avoidGrid">
-            <div class="skeleton-block"></div>
-          </div>
-        </div>
-
+  <div class="app-body">
+    <!-- Sidebar -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-section">
+        <p class="sidebar-label">메뉴</p>
+        <nav class="sidebar-nav">
+          <a class="sidebar-item active" href="#" data-nav="home" id="sideHome">
+            <span class="material-symbols-outlined">home</span><span>홈</span>
+          </a>
+          <a class="sidebar-item" href="#" data-nav="market" id="sideMarket">
+            <span class="material-symbols-outlined">trending_up</span><span>시장 현황</span>
+          </a>
+          <a class="sidebar-item" href="#" data-nav="recommend" id="sideRecommend">
+            <span class="material-symbols-outlined">auto_awesome</span><span>추천 종목</span>
+          </a>
+          <a class="sidebar-item" href="#" data-nav="compare" id="sideCompare">
+            <span class="material-symbols-outlined">compare_arrows</span><span>종목 비교</span>
+          </a>
+          <a class="sidebar-item" href="#" data-nav="favorites" id="sideFavorites">
+            <span class="material-symbols-outlined">star</span><span>관심종목</span>
+          </a>
+        </nav>
       </div>
-    </div>
+      <!-- 서버 모니터 (사이드바 하단) -->
+      <div class="sidebar-section sidebar-monitor" id="systemStats" aria-label="서버 모니터링">
+        <p class="sidebar-label">서버</p>
+        <div class="monitor-row">
+          <span class="monitor-label">CPU</span>
+          <span class="monitor-value" id="statCpuValue">--%</span>
+        </div>
+        <div class="monitor-bar bar-cpu" id="statCpuBar"><div class="monitor-bar-fill" style="width:0%"></div></div>
+        <div class="monitor-row" style="margin-top:8px">
+          <span class="monitor-label">메모리</span>
+          <span class="monitor-value" id="statMemValue">--%</span>
+        </div>
+        <div class="monitor-bar bar-mem" id="statMemBar"><div class="monitor-bar-fill" style="width:0%"></div></div>
+        <div class="monitor-detail" id="statMemDetail">-- / --</div>
+      </div>
+    </aside>
 
-    <!-- 분석 대시보드 -->
-    <div id="dashboard" class="dashboard" style="display:none">
-      <!-- 상단: 종목 요약 -->
-      <section class="stock-summary" id="stockSummary">
-        <div class="summary-left">
-          <button id="favToggle" class="fav-toggle" title="즐겨찾기 (F)">&#9734;</button>
-          <h2 id="stockName" class="stock-name">-</h2>
-          <span id="stockCode" class="stock-code">-</span>
-          <span id="stockMarket" class="stock-market">-</span>
-          <span id="stockSector" class="stock-sector">-</span>
-        </div>
-        <div class="summary-right">
-          <div class="price-group">
-            <div class="price-label" id="priceLabel">KRX 종가</div>
-            <div id="stockPrice" class="stock-price">-</div>
-            <div id="stockChange" class="stock-change">-</div>
-            <div id="liveTimestamp" class="live-timestamp"></div>
-          </div>
-          <div class="over-market-group" id="overMarketGroup" style="display:none">
-            <div class="over-market-label" id="overMarketLabel">시간외/NXT</div>
-            <div id="overMarketPrice" class="over-market-price">-</div>
-            <div id="overMarketChange" class="over-market-change">-</div>
-            <div id="overMarketTime" class="over-market-time"></div>
-          </div>
-        </div>
-      </section>
+    <!-- Main Content -->
+    <div class="app-content">
+      <noscript><div class="noscript-msg"><h2>JavaScript를 활성화해주세요</h2></div></noscript>
 
-      <!-- 스코어 카드 -->
-      <section class="score-section">
-        <div class="score-main-card" id="scoreMainCard">
-          <div class="score-gauge-wrap">
-            <canvas id="scoreGauge" width="200" height="200" role="img" aria-label="종합 스코어 게이지"></canvas>
-            <div class="score-value" id="scoreValue">-</div>
+      <!-- 초기 화면 (Welcome) -->
+      <div id="welcomeScreen" class="welcome">
+        <div class="welcome-content">
+          <div class="welcome-hero">
+            <h2>종목을 검색하세요</h2>
+            <p>삼성전자, 005930 등으로 검색하면 스코어링 분석을 제공합니다.</p>
           </div>
-          <div id="scoreSignal" class="score-signal">분석 중...</div>
-          <div class="score-updated" id="scoreUpdated"></div>
-          <!-- 스코어 히스토리 미니 차트 -->
-          <div class="score-history-wrap" id="scoreHistoryWrap" style="display:none">
-            <canvas id="scoreHistoryChart" width="180" height="50"></canvas>
-          </div>
-        </div>
-        <div class="score-breakdown">
-          <div class="breakdown-item has-tooltip" id="tipTechnical">
-            <div class="breakdown-label">기술적 분석 <span class="breakdown-weight">23%</span></div>
-            <div class="breakdown-bar-wrap">
-              <div class="breakdown-bar" id="barTechnical" style="width:0%"></div>
-            </div>
-            <div class="breakdown-value" id="valTechnical">-</div>
-            <div class="breakdown-tooltip" id="tooltipTechnical"></div>
-          </div>
-          <div class="breakdown-item has-tooltip" id="tipSignal">
-            <div class="breakdown-label">매매 시그널 <span class="breakdown-weight">19%</span></div>
-            <div class="breakdown-bar-wrap">
-              <div class="breakdown-bar" id="barSignal" style="width:0%"></div>
-            </div>
-            <div class="breakdown-value" id="valSignal">-</div>
-            <div class="breakdown-tooltip" id="tooltipSignal"></div>
-          </div>
-          <div class="breakdown-item has-tooltip" id="tipFundamental">
-            <div class="breakdown-label">펀더멘탈 <span class="breakdown-weight">19%</span></div>
-            <div class="breakdown-bar-wrap">
-              <div class="breakdown-bar" id="barFundamental" style="width:0%"></div>
-            </div>
-            <div class="breakdown-value" id="valFundamental">-</div>
-            <div class="breakdown-tooltip" id="tooltipFundamental"></div>
-          </div>
-          <div class="breakdown-item has-tooltip" id="tipMacro">
-            <div class="breakdown-label">글로벌 매크로 <span class="breakdown-weight">14%</span></div>
-            <div class="breakdown-bar-wrap">
-              <div class="breakdown-bar" id="barMacro" style="width:0%"></div>
-            </div>
-            <div class="breakdown-value" id="valMacro">-</div>
-            <div class="breakdown-tooltip" id="tooltipMacro"></div>
-          </div>
-          <div class="breakdown-item has-tooltip" id="tipRisk">
-            <div class="breakdown-label">리스크 <span class="breakdown-weight">15%</span></div>
-            <div class="breakdown-bar-wrap">
-              <div class="breakdown-bar" id="barRisk" style="width:0%"></div>
-            </div>
-            <div class="breakdown-value" id="valRisk">-</div>
-            <div class="breakdown-tooltip" id="tooltipRisk"></div>
-          </div>
-          <div class="breakdown-item has-tooltip" id="tipRelated">
-            <div class="breakdown-label">관련기업 <span class="breakdown-weight">5%</span></div>
-            <div class="breakdown-bar-wrap">
-              <div class="breakdown-bar" id="barRelated" style="width:0%"></div>
-            </div>
-            <div class="breakdown-value" id="valRelated">-</div>
-            <div class="breakdown-tooltip" id="tooltipRelated"></div>
-          </div>
-          <div class="breakdown-item has-tooltip" id="tipNews">
-            <div class="breakdown-label">뉴스 감성 <span class="breakdown-weight">5%</span></div>
-            <div class="breakdown-bar-wrap">
-              <div class="breakdown-bar" id="barNews" style="width:0%"></div>
-            </div>
-            <div class="breakdown-value" id="valNews">-</div>
-            <div class="breakdown-tooltip" id="tooltipNews"></div>
-          </div>
-        </div>
-      </section>
 
-      <!-- 투자 액션 가이드 -->
-      <div class="action-guide" id="actionGuide" style="display:none" role="region" aria-label="투자 액션 가이드">
-        <h3 class="section-title">투자 액션 가이드</h3>
-        <div class="action-guide-grid">
-          <div class="action-card">
-            <span class="action-label">투자 의견</span>
-            <span class="action-value" id="actionOpinion">-</span>
+          <!-- 즐겨찾기 -->
+          <div id="favoritesSection" class="content-section" style="display:none">
+            <div class="section-header">
+              <span class="section-title">관심종목</span>
+              <button class="clear-btn" id="clearFavorites">지우기</button>
+            </div>
+            <div class="stock-cards-grid" id="favoritesGrid"></div>
           </div>
-          <div class="action-card">
-            <span class="action-label">목표가</span>
-            <span class="action-value" id="actionTarget">-</span>
+
+          <!-- 최근 검색 -->
+          <div id="recentSection" class="content-section" style="display:none">
+            <div class="section-header">
+              <span class="section-title">최근 검색</span>
+              <button class="clear-btn" id="clearRecent">지우기</button>
+            </div>
+            <div class="stock-cards-grid" id="recentGrid"></div>
           </div>
-          <div class="action-card">
-            <span class="action-label">손절가</span>
-            <span class="action-value" id="actionStopLoss">-</span>
+
+          <!-- 시장 요약 -->
+          <div id="marketSummarySection" class="content-section" style="display:none">
+            <div class="section-header">
+              <span class="section-title">시장 환경</span>
+              <span class="section-time" id="marketSummaryTime"></span>
+            </div>
+            <div class="market-summary-card" id="marketSummaryCard">
+              <div class="market-summary-row">
+                <div class="market-index-item" id="msKospi">
+                  <div class="market-index-label">KOSPI</div>
+                  <div class="market-index-value">-</div>
+                  <div class="market-index-change">-</div>
+                </div>
+                <div class="market-index-item" id="msKosdaq">
+                  <div class="market-index-label">KOSDAQ</div>
+                  <div class="market-index-value">-</div>
+                  <div class="market-index-change">-</div>
+                </div>
+                <div class="market-index-item" id="msUsdKrw">
+                  <div class="market-index-label">USD/KRW</div>
+                  <div class="market-index-value">-</div>
+                  <div class="market-index-change">-</div>
+                </div>
+                <div class="market-index-item market-macro-score" id="msMacro">
+                  <div class="market-index-label">매크로 점수</div>
+                  <div class="market-index-value">-</div>
+                  <div class="market-macro-label" id="msMacroLabel">-</div>
+                </div>
+              </div>
+              <div class="market-summary-bottom">
+                <div class="market-factors" id="msKeyFactors"></div>
+                <div class="market-sector-outlook" id="msSectorOutlook"></div>
+              </div>
+            </div>
           </div>
-          <div class="action-card">
-            <span class="action-label">제안 비중</span>
-            <span class="action-value" id="actionPosition">-</span>
+
+          <!-- 지정학 리스크 -->
+          <div id="geopoliticalSection" class="content-section" style="display:none">
+            <div class="section-header">
+              <span class="section-title">지정학 리스크</span>
+              <span class="section-time" id="geoUpdateTime"></span>
+            </div>
+            <div class="geo-dashboard" aria-label="지정학 리스크 대시보드" role="region">
+              <div class="geo-risk-index" id="geoRiskIndex">
+                <div class="geo-risk-gauge" aria-label="리스크 점수">
+                  <div class="geo-risk-score" id="geoRiskScore" aria-live="polite">-</div>
+                  <div class="geo-risk-label" id="geoRiskLabel">분석 중...</div>
+                </div>
+                <div class="geo-risk-bar-wrap">
+                  <div class="geo-risk-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="geoRiskBar">
+                    <div class="geo-risk-bar-fill" id="geoRiskBarFill" style="width:0%"></div>
+                  </div>
+                  <div class="geo-risk-bar-labels" aria-hidden="true">
+                    <span>안정</span><span>주의</span><span>경계</span><span>위험</span>
+                  </div>
+                </div>
+              </div>
+              <div class="geo-right-col" aria-live="polite">
+                <div>
+                  <div class="geo-section-label" id="geoEventsLabel">감지된 이벤트</div>
+                  <div class="geo-events" id="geoEvents" role="list" aria-labelledby="geoEventsLabel"></div>
+                </div>
+                <div>
+                  <div class="geo-section-label" id="geoSectorLabel">섹터별 영향</div>
+                  <div class="geo-sector-impacts" id="geoSectorImpacts" role="list" aria-labelledby="geoSectorLabel"></div>
+                </div>
+                <div>
+                  <div class="geo-section-label" id="geoTriggersLabel">시나리오 트리거</div>
+                  <div class="geo-triggers" id="geoTriggers" role="list" aria-labelledby="geoTriggersLabel"></div>
+                </div>
+              </div>
+            </div>
           </div>
-          <div class="action-card">
-            <span class="action-label">리스크 등급</span>
-            <span class="action-value" id="actionRiskGrade">-</span>
+
+          <!-- 추천 종목 -->
+          <div id="recommendSection" class="content-section" style="display:none">
+            <div class="section-header">
+              <span class="section-title">추천 종목</span>
+              <span class="recommend-update-time" id="recommendUpdateTime"></span>
+            </div>
+            <div class="recommend-grid" id="recommendGrid">
+              <div class="skeleton-block"></div>
+            </div>
           </div>
-          <div class="action-card">
-            <span class="action-label">확신도</span>
-            <span class="action-value" id="actionConfidence">-</span>
+
+          <!-- 주의 종목 -->
+          <div id="avoidSection" class="content-section" style="display:none">
+            <div class="section-header">
+              <span class="section-title">주의 종목</span>
+            </div>
+            <div class="recommend-grid" id="avoidGrid">
+              <div class="skeleton-block"></div>
+            </div>
           </div>
         </div>
       </div>
 
-      <!-- 차트 + 뉴스 -->
-      <section class="content-grid">
-        <div class="chart-panel">
-          <div class="panel-header">
-            <h3>주가 차트</h3>
-            <div class="chart-controls">
+      <!-- 분석 대시보드 -->
+      <div id="dashboard" class="dashboard" style="display:none">
+        <!-- 종목 요약 -->
+        <section class="stock-summary" id="stockSummary">
+          <div class="summary-left">
+            <div class="stock-icon-wrap">
+              <span class="material-symbols-outlined stock-icon-lg">analytics</span>
+            </div>
+            <div>
+              <div class="stock-name-row">
+                <h2 id="stockName" class="stock-name">-</h2>
+                <span id="stockMarket" class="stock-market">-</span>
+              </div>
+              <p class="stock-meta"><span id="stockCode" class="stock-code">-</span> · <span id="stockSector" class="stock-sector">-</span></p>
+            </div>
+          </div>
+          <div class="summary-right">
+            <button id="favToggle" class="fav-btn" title="관심종목 추가 (F)">
+              <span class="material-symbols-outlined">add_circle</span>
+              <span>관심종목 추가</span>
+            </button>
+          </div>
+        </section>
+
+        <!-- 가격 + 스코어 카드 그리드 -->
+        <section class="stats-grid">
+          <div class="stat-card">
+            <span class="stat-card-label" id="priceLabel">현재가</span>
+            <div class="stat-card-body">
+              <p id="stockPrice" class="stat-card-value">-</p>
+              <p id="stockChange" class="stat-card-change">-</p>
+            </div>
+            <div id="liveTimestamp" class="stat-card-note"></div>
+            <div id="overMarketGroup" style="display:none" class="stat-card-sub">
+              <span class="stat-card-sub-label" id="overMarketLabel">시간외</span>
+              <span id="overMarketPrice" class="stat-card-sub-val">-</span>
+              <span id="overMarketChange" class="stat-card-sub-change">-</span>
+              <span id="overMarketTime" class="stat-card-sub-note"></span>
+            </div>
+          </div>
+          <div class="stat-card stat-card-score" id="scoreMainCard">
+            <span class="stat-card-label">종합 스코어</span>
+            <div class="stat-card-body score-body">
+              <div class="score-gauge-wrap">
+                <canvas id="scoreGauge" width="140" height="140" role="img" aria-label="종합 스코어 게이지"></canvas>
+                <div class="score-value" id="scoreValue">-</div>
+              </div>
+              <div>
+                <div id="scoreSignal" class="score-signal">분석 중...</div>
+                <div class="score-updated" id="scoreUpdated"></div>
+                <div class="score-history-wrap" id="scoreHistoryWrap" style="display:none">
+                  <canvas id="scoreHistoryChart" width="140" height="40"></canvas>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- 스코어 상세 -->
+        <section class="score-breakdown-card">
+          <div class="section-header"><span class="section-title">팩터별 스코어</span></div>
+          <div class="score-breakdown">
+            <div class="breakdown-item has-tooltip" id="tipTechnical">
+              <div class="breakdown-label">기술적 분석 <span class="breakdown-weight">23%</span></div>
+              <div class="breakdown-bar-wrap"><div class="breakdown-bar" id="barTechnical" style="width:0%"></div></div>
+              <div class="breakdown-value" id="valTechnical">-</div>
+              <div class="breakdown-tooltip" id="tooltipTechnical"></div>
+            </div>
+            <div class="breakdown-item has-tooltip" id="tipSignal">
+              <div class="breakdown-label">매매 시그널 <span class="breakdown-weight">19%</span></div>
+              <div class="breakdown-bar-wrap"><div class="breakdown-bar" id="barSignal" style="width:0%"></div></div>
+              <div class="breakdown-value" id="valSignal">-</div>
+              <div class="breakdown-tooltip" id="tooltipSignal"></div>
+            </div>
+            <div class="breakdown-item has-tooltip" id="tipFundamental">
+              <div class="breakdown-label">펀더멘탈 <span class="breakdown-weight">19%</span></div>
+              <div class="breakdown-bar-wrap"><div class="breakdown-bar" id="barFundamental" style="width:0%"></div></div>
+              <div class="breakdown-value" id="valFundamental">-</div>
+              <div class="breakdown-tooltip" id="tooltipFundamental"></div>
+            </div>
+            <div class="breakdown-item has-tooltip" id="tipMacro">
+              <div class="breakdown-label">글로벌 매크로 <span class="breakdown-weight">14%</span></div>
+              <div class="breakdown-bar-wrap"><div class="breakdown-bar" id="barMacro" style="width:0%"></div></div>
+              <div class="breakdown-value" id="valMacro">-</div>
+              <div class="breakdown-tooltip" id="tooltipMacro"></div>
+            </div>
+            <div class="breakdown-item has-tooltip" id="tipRisk">
+              <div class="breakdown-label">리스크 <span class="breakdown-weight">15%</span></div>
+              <div class="breakdown-bar-wrap"><div class="breakdown-bar" id="barRisk" style="width:0%"></div></div>
+              <div class="breakdown-value" id="valRisk">-</div>
+              <div class="breakdown-tooltip" id="tooltipRisk"></div>
+            </div>
+            <div class="breakdown-item has-tooltip" id="tipRelated">
+              <div class="breakdown-label">관련기업 <span class="breakdown-weight">5%</span></div>
+              <div class="breakdown-bar-wrap"><div class="breakdown-bar" id="barRelated" style="width:0%"></div></div>
+              <div class="breakdown-value" id="valRelated">-</div>
+              <div class="breakdown-tooltip" id="tooltipRelated"></div>
+            </div>
+            <div class="breakdown-item has-tooltip" id="tipNews">
+              <div class="breakdown-label">뉴스 감성 <span class="breakdown-weight">5%</span></div>
+              <div class="breakdown-bar-wrap"><div class="breakdown-bar" id="barNews" style="width:0%"></div></div>
+              <div class="breakdown-value" id="valNews">-</div>
+              <div class="breakdown-tooltip" id="tooltipNews"></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- 투자 액션 가이드 -->
+        <div class="action-guide" id="actionGuide" style="display:none" role="region" aria-label="투자 액션 가이드">
+          <div class="section-header"><span class="section-title">투자 액션 가이드</span></div>
+          <div class="action-guide-grid">
+            <div class="action-card"><span class="action-label">투자 의견</span><span class="action-value" id="actionOpinion">-</span></div>
+            <div class="action-card"><span class="action-label">목표가</span><span class="action-value" id="actionTarget">-</span></div>
+            <div class="action-card"><span class="action-label">손절가</span><span class="action-value" id="actionStopLoss">-</span></div>
+            <div class="action-card"><span class="action-label">제안 비중</span><span class="action-value" id="actionPosition">-</span></div>
+            <div class="action-card"><span class="action-label">리스크 등급</span><span class="action-value" id="actionRiskGrade">-</span></div>
+            <div class="action-card"><span class="action-label">확신도</span><span class="action-value" id="actionConfidence">-</span></div>
+          </div>
+        </div>
+
+        <!-- 차트 + 뉴스 -->
+        <section class="content-grid">
+          <div class="chart-panel">
+            <div class="panel-header">
+              <h3>주가 추이</h3>
+              <div class="chart-controls">
+                <div class="chart-btn-group chart-period-group">
+                  <button class="chart-btn active" data-days="30">1달</button>
+                  <button class="chart-btn" data-days="90">3달</button>
+                  <button class="chart-btn" data-days="180">6달</button>
+                  <button class="chart-btn" data-days="365">1년</button>
+                </div>
+              </div>
+            </div>
+            <div class="chart-sub-controls">
               <div class="chart-btn-group">
-                <button class="chart-toggle-btn active" data-mode="line" title="라인 차트">Line</button>
-                <button class="chart-toggle-btn" data-mode="candle" title="캔들 차트">Candle</button>
+                <button class="chart-toggle-btn active" data-mode="line">라인</button>
+                <button class="chart-toggle-btn" data-mode="candle">캔들</button>
               </div>
-              <div class="chart-btn-group chart-ma-group">
+              <div class="chart-btn-group">
                 <button class="chart-ma-btn" data-ma="5">MA5</button>
                 <button class="chart-ma-btn active" data-ma="20">MA20</button>
                 <button class="chart-ma-btn" data-ma="60">MA60</button>
                 <button class="chart-ma-btn" data-ma="bb">BB</button>
                 <button class="chart-ma-btn" data-ma="rsi">RSI</button>
-                <button class="chart-ma-btn active" data-ma="vol">Vol</button>
-              </div>
-              <div class="chart-btn-group">
-                <button class="chart-btn active" data-days="30">1M</button>
-                <button class="chart-btn" data-days="90">3M</button>
-                <button class="chart-btn" data-days="180">6M</button>
-                <button class="chart-btn" data-days="365">1Y</button>
+                <button class="chart-ma-btn active" data-ma="vol">거래량</button>
               </div>
             </div>
+            <div class="chart-container"><canvas id="priceChart"></canvas></div>
+            <div class="chart-container rsi-container" id="rsiContainer" style="display:none;height:100px;">
+              <canvas id="rsiChart"></canvas>
+            </div>
           </div>
-          <div class="chart-container">
-            <canvas id="priceChart"></canvas>
-          </div>
-          <div class="chart-container rsi-container" id="rsiContainer" style="display:none;height:100px;">
-            <canvas id="rsiChart"></canvas>
-          </div>
-        </div>
 
-        <div class="news-panel">
+          <div class="news-panel">
+            <div class="panel-header">
+              <h3><span class="material-symbols-outlined panel-icon">newspaper</span> 실시간 뉴스</h3>
+              <div class="news-summary" id="newsSummary"></div>
+            </div>
+            <div class="news-list" id="newsList"><div class="skeleton-block"></div></div>
+          </div>
+        </section>
+
+        <!-- 관련기업 -->
+        <section class="related-section">
           <div class="panel-header">
-            <h3>뉴스 감성분석 <span class="panel-note">비중 5%</span></h3>
-            <div class="news-summary" id="newsSummary"></div>
+            <h3>관련기업 분석</h3>
+            <span class="related-count" id="relatedCount">-</span>
           </div>
-          <div class="news-list" id="newsList">
-            <div class="skeleton-block"></div>
-          </div>
-        </div>
-      </section>
-
-      <!-- 관련기업 -->
-      <section class="related-section">
-        <div class="panel-header">
-          <h3>관련기업 분석</h3>
-          <span class="related-count" id="relatedCount">-</span>
-        </div>
-        <div class="related-grid" id="relatedGrid">
-          <div class="skeleton-block"></div>
-        </div>
-      </section>
-    </div>
-
-    <!-- 종목 비교 모드 -->
-    <div id="compareOverlay" class="compare-overlay" style="display:none">
-      <div class="compare-header">
-        <h2>종목 비교</h2>
-        <button id="compareClose" class="compare-close-btn" title="닫기">&times;</button>
+          <div class="related-grid" id="relatedGrid"><div class="skeleton-block"></div></div>
+        </section>
       </div>
-      <div class="compare-search-row">
-        <div class="compare-slot">
-          <label for="compareInput1" class="sr-only">종목 1</label>
-          <input type="text" id="compareInput1" class="compare-input" placeholder="종목 1 검색..." autocomplete="off">
-          <div id="compareDropdown1" class="search-dropdown"></div>
-          <div id="compareResult1" class="compare-result"></div>
+
+      <!-- 종목 비교 -->
+      <div id="compareOverlay" class="compare-overlay" style="display:none">
+        <div class="compare-header">
+          <h2>종목 비교</h2>
+          <button id="compareClose" class="compare-close-btn" title="닫기">&times;</button>
         </div>
-        <div class="compare-vs">VS</div>
-        <div class="compare-slot">
-          <label for="compareInput2" class="sr-only">종목 2</label>
-          <input type="text" id="compareInput2" class="compare-input" placeholder="종목 2 검색..." autocomplete="off">
-          <div id="compareDropdown2" class="search-dropdown"></div>
-          <div id="compareResult2" class="compare-result"></div>
+        <div class="compare-search-row">
+          <div class="compare-slot">
+            <label for="compareInput1" class="sr-only">종목 1</label>
+            <input type="text" id="compareInput1" class="compare-input" placeholder="종목 1 검색..." autocomplete="off">
+            <div id="compareDropdown1" class="search-dropdown"></div>
+            <div id="compareResult1" class="compare-result"></div>
+          </div>
+          <div class="compare-vs">VS</div>
+          <div class="compare-slot">
+            <label for="compareInput2" class="sr-only">종목 2</label>
+            <input type="text" id="compareInput2" class="compare-input" placeholder="종목 2 검색..." autocomplete="off">
+            <div id="compareDropdown2" class="search-dropdown"></div>
+            <div id="compareResult2" class="compare-result"></div>
+          </div>
         </div>
       </div>
+
+      <!-- 로딩 -->
+      <div id="loadingOverlay" class="loading-overlay" style="display:none">
+        <div class="spinner"></div><p>분석 중...</p>
+      </div>
+      <div id="toastContainer" class="toast-container"></div>
     </div>
+  </div>
 
-    <!-- 로딩 오버레이 -->
-    <div id="loadingOverlay" class="loading-overlay" style="display:none">
-      <div class="spinner"></div>
-      <p>분석 중...</p>
-    </div>
+  <!-- 모바일 하단 네비게이션 -->
+  <nav class="mobile-nav" id="mobileNav">
+    <button class="mobile-nav-item active" data-nav="home"><span class="material-symbols-outlined">home</span><span>홈</span></button>
+    <button class="mobile-nav-item" data-nav="market"><span class="material-symbols-outlined">trending_up</span><span>시장</span></button>
+    <button class="mobile-nav-item" data-nav="recommend"><span class="material-symbols-outlined">auto_awesome</span><span>추천</span></button>
+    <button class="mobile-nav-item" data-nav="favorites"><span class="material-symbols-outlined">star</span><span>관심</span></button>
+    <button class="mobile-nav-item" data-nav="compare"><span class="material-symbols-outlined">compare_arrows</span><span>비교</span></button>
+  </nav>
 
-    <!-- 토스트 컨테이너 -->
-    <div id="toastContainer" class="toast-container"></div>
+  <!-- 키보드 단축키 힌트 -->
+  <div id="shortcutHint" class="shortcut-hint">
+    <span><kbd>/</kbd> 검색</span>
+    <span><kbd>Esc</kbd> 홈</span>
+    <span><kbd>F</kbd> 즐겨찾기</span>
+  </div>
+</div>
 
-    <!-- Footer -->
-    <footer class="site-footer">
-      <span class="footer-brand">AlphaLens</span>
-      <span class="footer-sep">&middot;</span>
-      <span class="footer-text">AI 기반 국내 주식 분석 플랫폼</span>
-    </footer>
-
-    <!-- 키보드 단축키 힌트 -->
-    <div id="shortcutHint" class="shortcut-hint">
-      <span><kbd>/</kbd> 검색</span>
-      <span><kbd>Esc</kbd> 홈</span>
-      <span><kbd>F</kbd> 즐겨찾기</span>
-    </div>
-  </main>
-
-  <script src="/js/api.js"></script>
-  <script src="/js/storage.js"></script>
-  <script src="/js/chart.js"></script>
-  <script src="/js/score.js"></script>
-  <script src="/js/search.js"></script>
-  <script src="/js/stream.js"></script>
-  <script src="/js/app.js"></script>
+<script src="/js/api.js?v=8"></script>
+<script src="/js/storage.js?v=8"></script>
+<script src="/js/chart.js?v=8"></script>
+<script src="/js/score.js?v=8"></script>
+<script src="/js/search.js?v=8"></script>
+<script src="/js/stream.js?v=8"></script>
+<script src="/js/app.js?v=8"></script>
 </body>
 </html>

@@ -14,7 +14,7 @@ router = APIRouter(dependencies=[Depends(verify_api_key)])
 @router.get("/{code}", response_model=RelatedCompanyResult)
 async def get_related_companies(
     code: str,
-    depth: int = Query(2, ge=1, le=3, description="탐색 깊이"),
+    depth: int = Query(1, ge=1, le=3, description="탐색 깊이"),
     max: int = Query(20, ge=1, le=50, description="최대 결과 수"),
 ):
     """관련기업 BFS 탐색 API."""

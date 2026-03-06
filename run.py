@@ -6,5 +6,5 @@ if __name__ == "__main__":
         "backend.main:app",
         host=settings.host,
         port=settings.port,
-        workers=1,
+        workers=2,
     )

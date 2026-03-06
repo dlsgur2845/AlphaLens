@@ -18,8 +18,8 @@ from backend.services.http_client import get_mobile_client
 
 logger = logging.getLogger(__name__)
 
-_CACHE_TTL = 900  # 15분
-_CRISIS_CACHE_TTL = 300  # 위기 시 5분
+_CACHE_TTL = 300  # 5분
+_CRISIS_CACHE_TTL = 120  # 위기 시 2분
 _TAG_RE = re.compile(r"<[^>]+>")
 _PREFIX_RE = re.compile(r"^\[(속보|단독|종합|긴급|1보|2보|3보)\]\s*")
 
@@ -307,7 +307,7 @@ async def _fetch_news_google_rss(
         resp = await client.get(
             url,
             headers={"User-Agent": "Mozilla/5.0"},
-            timeout=8.0,
+            timeout=5.0,
         )
         if resp.status_code == 200:
             root = ET.fromstring(resp.text)
@@ -328,10 +328,10 @@ async def _fetch_news_google_rss(
                     articles.append({"title": title, "body": desc, "lang": lang})
                 if len(articles) >= max_articles:
                     break
-    except Exception:
-        logger.warning(
-            "Google News RSS fetch failed for query=%s", query, exc_info=True,
-        )
+        elif resp.status_code == 503:
+            logger.debug("Google News RSS 503 for query=%s", query)
+    except Exception as exc:
+        logger.debug("Google News RSS failed for query=%s: %s", query, type(exc).__name__)
 
     return articles
 
@@ -365,8 +365,8 @@ async def _fetch_news_naver_finance(max_articles: int = 15) -> list[dict]:
                 )
                 if title:
                     articles.append({"title": title, "body": body})
-    except Exception:
-        logger.warning("Naver finance news fetch failed", exc_info=True)
+    except Exception as exc:
+        logger.debug("Naver finance news fetch failed: %s", type(exc).__name__)
 
     return articles
 
@@ -743,6 +743,128 @@ def _get_macro_snapshot(macro_data: dict | None) -> dict:
     return snapshot
 
 
+# ── LLM 이벤트 심층분석 ──
+
+
+async def _llm_enhance_events(
+    detected_events: dict[str, dict],
+    articles: list[dict],
+) -> dict[str, dict]:
+    """키워드 탐지 결과를 LLM으로 심층분석 강화.
+
+    방향 판별, 심각도 보정, 연쇄 효과, 맥락 설명 추가.
+    실패 시 기존 키워드 결과 그대로 반환.
+    """
+    if not detected_events:
+        return detected_events
+
+    try:
+        from backend.services.llm_service import llm
+
+        if not llm.available:
+            return detected_events
+    except ImportError:
+        return detected_events
+
+    # 헤드라인 요약 (최대 15개)
+    headlines = []
+    for article in articles[:30]:
+        title = article.get("title", "").strip()
+        if title and title not in headlines:
+            headlines.append(title)
+            if len(headlines) >= 15:
+                break
+
+    if not headlines:
+        return detected_events
+
+    # 이벤트별 LLM 분석
+    events_summary = []
+    for cat_id, event in detected_events.items():
+        events_summary.append(
+            f"- {event['label']} (키워드: {', '.join(event['matched_keywords'][:3])})"
+        )
+
+    prompt_text = (
+        "다음은 한국 증시에 영향을 줄 수 있는 감지된 지정학 이벤트와 관련 뉴스 헤드라인입니다.\n\n"
+        "감지된 이벤트:\n" + "\n".join(events_summary) + "\n\n"
+        "헤드라인:\n" + "\n".join(f"- {h}" for h in headlines) + "\n\n"
+        "각 이벤트에 대해 분석하세요. 반드시 JSON만 출력하세요:\n"
+        '{"events": [{"category": "카테고리ID", "direction": "positive/negative/mixed", '
+        '"severity_adjustment": -2.0~2.0, "cascading_effects": "연쇄 효과 설명", '
+        '"time_horizon": "단기/중기/장기", "context": "맥락 설명 1-2문장"}]}'
+    )
+
+    try:
+        result = await asyncio.wait_for(
+            llm.chat_json(
+                [
+                    {
+                        "role": "system",
+                        "content": (
+                            "당신은 지정학 리스크와 한국 증시 영향 분석 전문가입니다. "
+                            "이벤트의 실제 방향(긍정/부정)을 정확히 판별하세요. "
+                            "예: '관세 철회'는 positive, '관세 부과'는 negative. "
+                            "반드시 유효한 JSON만 출력하세요."
+                        ),
+                    },
+                    {"role": "user", "content": prompt_text},
+                ],
+                temperature=0.2,
+                max_tokens=768,
+            ),
+            timeout=15.0,
+        )
+
+        if not result or "events" not in result:
+            return detected_events
+
+        # LLM 결과를 기존 이벤트에 병합
+        llm_events_map = {}
+        for ev in result["events"]:
+            cat = ev.get("category", "")
+            if cat:
+                llm_events_map[cat] = ev
+
+        for cat_id, event in detected_events.items():
+            llm_ev = llm_events_map.get(cat_id)
+            if llm_ev:
+                # 심각도 보정 (-2.0 ~ +2.0)
+                adj = max(-2.0, min(2.0, float(llm_ev.get("severity_adjustment", 0))))
+                if adj != 0:
+                    old_score = event["severity_score"]
+                    new_score = max(1.0, min(4.0, old_score + adj))
+                    event["severity_score"] = round(new_score, 1)
+                    event["severity"] = _score_to_severity(new_score)
+
+                event["llm_context"] = {
+                    "direction": llm_ev.get("direction", "mixed"),
+                    "cascading_effects": llm_ev.get("cascading_effects", ""),
+                    "time_horizon": llm_ev.get("time_horizon", ""),
+                    "context": llm_ev.get("context", ""),
+                }
+
+        return detected_events
+
+    except asyncio.TimeoutError:
+        logger.warning("LLM geopolitical enhancement timed out (15s)")
+        return detected_events
+    except Exception as e:
+        logger.warning("LLM geopolitical enhancement failed: %s", e)
+        return detected_events
+
+
+def _score_to_severity(score: float) -> str:
+    """수치를 심각도 문자열로 변환."""
+    if score >= 3.5:
+        return "critical"
+    elif score >= 2.5:
+        return "high"
+    elif score >= 1.5:
+        return "medium"
+    return "low"
+
+
 # ── 메인 분석 함수 ──
 
 
@@ -752,6 +874,33 @@ async def get_geopolitical_analysis() -> dict:
     cached = cache.get(cache_key)
     if cached is not None:
         return cached
+
+    try:
+        return await asyncio.wait_for(
+            _build_geopolitical_analysis(), timeout=25.0,
+        )
+    except asyncio.TimeoutError:
+        logger.warning("Geopolitical analysis timed out (25s)")
+        return _empty_geopolitical_result()
+
+
+def _empty_geopolitical_result() -> dict:
+    """타임아웃/실패 시 빈 결과 반환."""
+    return {
+        "risk_index": {"score": 20.0, "level": "낮음", "label": "분석 지연"},
+        "detected_events": {},
+        "sector_impacts": {},
+        "scenario_triggers": [{"signal": "데이터 수집 지연", "action": "잠시 후 재시도", "severity": "low"}],
+        "articles_analyzed": 0,
+        "confidence": "none",
+        "macro_snapshot": {},
+        "updated_at": datetime.now().isoformat(),
+    }
+
+
+async def _build_geopolitical_analysis() -> dict:
+    """지정학 리스크 종합 분석 (내부 구현)."""
+    cache_key = "geopolitical:analysis"
 
     # 핵심 키워드 그룹별 뉴스 병렬 수집
     keyword_groups_ko = [
@@ -810,6 +959,9 @@ async def get_geopolitical_analysis() -> dict:
     # 이벤트 감지
     detected_events = _detect_events(unique_articles)
 
+    # LLM 이벤트 심층분석
+    detected_events = await _llm_enhance_events(detected_events, unique_articles)
+
     # 매크로 데이터
     macro_data = None
     try:
@@ -846,6 +998,14 @@ async def get_geopolitical_analysis() -> dict:
     else:
         confidence = "none"
 
+    # LLM 가용 여부
+    llm_analysis = {"available": False}
+    try:
+        from backend.services.llm_service import llm
+        llm_analysis["available"] = llm.available
+    except ImportError:
+        pass
+
     result = {
         "risk_index": risk_index,
         "detected_events": detected_events,
@@ -854,6 +1014,7 @@ async def get_geopolitical_analysis() -> dict:
         "articles_analyzed": len(unique_articles),
         "confidence": confidence,
         "macro_snapshot": _get_macro_snapshot(macro_data),
+        "llm_analysis": llm_analysis,
         "updated_at": datetime.now().isoformat(),
     }
 
