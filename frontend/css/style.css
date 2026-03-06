@@ -983,6 +983,39 @@ body::before { display: none; }
 .action-value.bullish { color: var(--red); }
 .action-value.bearish { color: var(--accent); }
 
+/* Action card tooltip */
+.action-card.has-action-tip {
+  position: relative;
+  cursor: help;
+}
+.action-card.has-action-tip::after {
+  content: attr(data-tip);
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: max(200px, min(280px, 90vw));
+  padding: 10px 12px;
+  background: var(--bg-elevated, #1e1e2e);
+  color: var(--text-secondary, #ccc);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm, 6px);
+  font-size: 12px;
+  line-height: 1.5;
+  letter-spacing: 0;
+  text-transform: none;
+  font-weight: 400;
+  white-space: normal;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+  z-index: 100;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.action-card.has-action-tip:hover::after {
+  opacity: 1;
+}
+
 /* ═══════════ Content Grid (Chart + News) ═══════════ */
 .content-grid {
   display: grid;
