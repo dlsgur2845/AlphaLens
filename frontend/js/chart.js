@@ -299,13 +299,15 @@ const PriceChart = {
 
   _maDataset(closes, period) {
     const ma = [];
+    const minPoints = Math.min(period, 2);
     for (let i = 0; i < closes.length; i++) {
-      if (i < period - 1) {
+      if (i < minPoints - 1) {
         ma.push(null);
       } else {
+        const windowSize = Math.min(period, i + 1);
         let sum = 0;
-        for (let j = i - period + 1; j <= i; j++) sum += closes[j];
-        ma.push(sum / period);
+        for (let j = i - windowSize + 1; j <= i; j++) sum += closes[j];
+        ma.push(sum / windowSize);
       }
     }
 
@@ -335,14 +337,16 @@ const PriceChart = {
     const upper = [];
     const lower = [];
 
+    const minPoints = Math.min(period, 2);
     for (let i = 0; i < closes.length; i++) {
-      if (i < period - 1) {
+      if (i < minPoints - 1) {
         upper.push(null);
         lower.push(null);
       } else {
-        const slice = closes.slice(i - period + 1, i + 1);
-        const avg = slice.reduce((a, b) => a + b, 0) / period;
-        const std = Math.sqrt(slice.reduce((s, v) => s + (v - avg) ** 2, 0) / period);
+        const windowSize = Math.min(period, i + 1);
+        const slice = closes.slice(i - windowSize + 1, i + 1);
+        const avg = slice.reduce((a, b) => a + b, 0) / windowSize;
+        const std = Math.sqrt(slice.reduce((s, v) => s + (v - avg) ** 2, 0) / windowSize);
         upper.push(avg + numStd * std);
         lower.push(avg - numStd * std);
       }

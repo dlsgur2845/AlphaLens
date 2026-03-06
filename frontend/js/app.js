@@ -107,18 +107,14 @@ const App = {
     // 로고 클릭 → 홈 복귀
     document.getElementById('logoHome').addEventListener('click', () => this.goHome());
 
-    // 즐겨찾기 지우기
-    document.getElementById('clearFavorites').addEventListener('click', () => {
-      Storage._save(Storage.KEYS.FAVORITES, []);
-      this.renderWelcomeData();
-      Toast.show('즐겨찾기를 비웠습니다', 'info');
+    // 즐겨찾기 더보기 → 관심종목 페이지로 이동
+    document.getElementById('moreFavorites').addEventListener('click', () => {
+      this.navigateTo('favorites');
     });
 
-    // 최근검색 지우기
-    document.getElementById('clearRecent').addEventListener('click', () => {
-      Storage.clearRecent();
-      this.renderWelcomeData();
-      Toast.show('최근 검색을 비웠습니다', 'info');
+    // 최근검색 더보기 → 관심종목 페이지로 이동
+    document.getElementById('moreRecent').addEventListener('click', () => {
+      this.navigateTo('favorites');
     });
 
     // 대시보드 즐겨찾기 토글
@@ -206,12 +202,6 @@ const App = {
 
       if (e.key === 'Escape') {
         e.preventDefault();
-        // 비교 모드 닫기
-        const overlay = document.getElementById('compareOverlay');
-        if (overlay && overlay.style.display !== 'none') {
-          overlay.style.display = 'none';
-          return;
-        }
         // 검색 드롭다운 닫기
         const dropdown = document.getElementById('searchResults');
         if (dropdown && dropdown.classList.contains('active')) {
@@ -260,7 +250,7 @@ const App = {
             this._showSingleSection('recommendSection', 'avoidSection');
             break;
           case 'compare':
-            document.getElementById('compareOverlay').style.display = '';
+            this._showSingleSection('compareSection');
             break;
           case 'favorites':
             this.renderWelcomeData({ limit: 0 });
@@ -293,13 +283,6 @@ const App = {
   // ── 비교 모드 ──
 
   _initCompareMode() {
-    const overlay = document.getElementById('compareOverlay');
-    const closeBtn = document.getElementById('compareClose');
-
-    closeBtn.addEventListener('click', () => {
-      overlay.style.display = 'none';
-    });
-
     // 비교 검색 입력
     [1, 2].forEach((slot) => {
       const input = document.getElementById(`compareInput${slot}`);
@@ -381,8 +364,11 @@ const App = {
     SectionProgress.clear();
     document.getElementById('dashboard').style.display = 'none';
     document.getElementById('welcomeScreen').style.display = '';
+    // 모든 content-section 표시 복원 (메뉴 이동으로 숨겨진 경우)
+    document.querySelectorAll('#welcomeScreen .content-section').forEach(el => {
+      el.style.display = '';
+    });
     document.getElementById('searchInput').value = '';
-    // compareBtn removed - nav handles compare
     if (AlphaStream._currentCode) {
       AlphaStream._send?.({ action: 'unsubscribe', code: AlphaStream._currentCode });
       AlphaStream._currentCode = null;
@@ -397,9 +383,11 @@ const App = {
     }
   },
 
-  /**
-   * 특정 섹션만 표시 (메뉴 클릭 시 상세 보기)
-   */
+  navigateTo(nav) {
+    const btn = document.querySelector(`.sidebar-item[data-nav="${nav}"]`);
+    if (btn) btn.click();
+  },
+
   _showSingleSection(...sectionIds) {
     // 대시보드 숨기고 웰컴 화면 표시
     document.getElementById('dashboard').style.display = 'none';
@@ -577,7 +565,7 @@ const App = {
   // ── Welcome 화면 데이터 ──
 
   renderWelcomeData(opts) {
-    const limit = (opts && opts.limit != null) ? opts.limit : 4;
+    const limit = (opts && opts.limit != null) ? opts.limit : 5;
     const favs = Storage.getFavorites();
     const recent = Storage.getRecent();
 
@@ -813,7 +801,6 @@ const App = {
       SectionProgress.error('recommend');
       recSection.style.display = 'none';
       avoidSection.style.display = 'none';
-      document.getElementById('marketSummarySection').style.display = 'none';
     }
   },
 
@@ -886,6 +873,53 @@ const App = {
       }).join('');
     } else {
       sectorEl.innerHTML = '';
+    }
+
+    // 투자 전략 가이드
+    const strategyEl = document.getElementById('msStrategy');
+    const st = ms.market_strategy;
+    if (st && strategyEl) {
+      const allocHtml = st.allocation
+        ? Object.entries(st.allocation).map(([k, v]) =>
+          `<div class="alloc-item"><span class="alloc-label">${escapeHTML(k)}</span><div class="alloc-bar-wrap"><div class="alloc-bar-fill alloc-${k}" style="width:${v}%"></div></div><span class="alloc-pct">${v}%</span></div>`
+        ).join('')
+        : '';
+
+      const tacticsHtml = (st.tactics || []).map(t =>
+        `<li>${escapeHTML(t)}</li>`
+      ).join('');
+
+      const cautionsHtml = (st.cautions || []).map(c =>
+        `<li>${escapeHTML(c)}</li>`
+      ).join('');
+
+      const sectorsHtml = (st.preferred_sectors || []).map(s =>
+        `<span class="preferred-sector-tag">${escapeHTML(s)}</span>`
+      ).join('');
+
+      strategyEl.innerHTML = `
+        <div class="strategy-header">
+          <div class="strategy-regime">${escapeHTML(st.regime)}</div>
+          <div class="strategy-name">${escapeHTML(st.strategy)}</div>
+        </div>
+        <div class="strategy-desc">${escapeHTML(st.regime_desc)}</div>
+        <div class="strategy-body">
+          <div class="strategy-col">
+            <div class="strategy-section-label">자산 배분 제안</div>
+            <div class="alloc-chart">${allocHtml}</div>
+          </div>
+          <div class="strategy-col">
+            <div class="strategy-section-label">전술</div>
+            <ul class="strategy-list tactics-list">${tacticsHtml}</ul>
+          </div>
+          <div class="strategy-col">
+            <div class="strategy-section-label">주의사항</div>
+            <ul class="strategy-list cautions-list">${cautionsHtml}</ul>
+          </div>
+        </div>
+        ${sectorsHtml ? `<div class="strategy-sectors"><span class="strategy-section-label">유망 섹터</span><div class="preferred-sectors">${sectorsHtml}</div></div>` : ''}
+      `;
+      strategyEl.style.display = '';
     }
 
     // 업데이트 시간
@@ -1000,10 +1034,10 @@ const App = {
     const btn = document.getElementById('favToggle');
     if (!btn) return;
     if (Storage.isFavorite(code)) {
-      btn.innerHTML = '<span class="material-symbols-outlined">star</span><span>관심종목 해제</span>';
+      btn.innerHTML = '관심종목 해제';
       btn.classList.add('active');
     } else {
-      btn.innerHTML = '<span class="material-symbols-outlined">add_circle</span><span>관심종목 추가</span>';
+      btn.innerHTML = '관심종목 추가';
       btn.classList.remove('active');
     }
   },
@@ -1408,8 +1442,13 @@ const SystemMonitor = {
   },
 };
 
-// 초기화
-document.addEventListener('DOMContentLoaded', () => {
+// 초기화 - DOMContentLoaded가 이미 발생한 경우에도 안전하게 실행
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', () => {
+    App.init();
+    SystemMonitor.start();
+  });
+} else {
   App.init();
   SystemMonitor.start();
-});
+}

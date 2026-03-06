@@ -593,6 +593,139 @@ def derive_sector_outlook(macro_score_val: float, macro_details: dict) -> dict:
     return outlook
 
 
+def derive_market_strategy(macro_score_val: float, macro_details: dict) -> dict:
+    """매크로 환경 기반 투자 전략 가이드 도출.
+
+    Returns:
+        dict with keys: regime, strategy, allocation, tactics, cautions
+    """
+    us10y = macro_details.get("us10y", {}).get("price", 4.0)
+    us10y_chg = macro_details.get("us10y", {}).get("change_pct", 0)
+    vix = macro_details.get("vix", {}).get("price", 20)
+    nasdaq_chg = macro_details.get("nasdaq", {}).get("change_pct", 0)
+    usdkrw_chg = macro_details.get("usdkrw", {}).get("change_pct", 0)
+    copper_chg = macro_details.get("copper", {}).get("change_pct", 0)
+    gold_chg = macro_details.get("gold", {}).get("change_pct", 0)
+    shanghai_chg = macro_details.get("shanghai", {}).get("change_pct", 0)
+    wti_chg = macro_details.get("wti", {}).get("change_pct", 0)
+
+    # 시장 국면 판정
+    if macro_score_val >= 65 and vix < 20:
+        regime = "강세장"
+        regime_desc = "글로벌 매크로 환경이 우호적이고 시장 변동성이 낮습니다"
+    elif macro_score_val >= 55:
+        regime = "완만한 상승"
+        regime_desc = "대체로 긍정적이나 일부 불확실성이 남아있습니다"
+    elif macro_score_val >= 45:
+        regime = "박스권 횡보"
+        regime_desc = "뚜렷한 방향성 없이 등락을 반복하는 구간입니다"
+    elif macro_score_val >= 35:
+        regime = "약세 전환"
+        regime_desc = "매크로 환경이 악화되고 있어 하방 리스크에 주의해야 합니다"
+    else:
+        regime = "약세장"
+        regime_desc = "글로벌 불확실성이 높고 리스크 회피 심리가 강합니다"
+
+    # VIX 공포 오버라이드
+    if vix > 30:
+        regime = "공포 구간"
+        regime_desc = f"VIX {vix:.0f}으로 시장 공포가 극대화된 구간입니다"
+
+    # 전략 방향
+    strategy = ""
+    allocation = {}  # 자산 배분 비율 제안
+    tactics = []     # 구체적 전술
+    cautions = []    # 주의사항
+
+    if regime in ("강세장", "완만한 상승"):
+        strategy = "적극 매수 (공격적 배분)"
+        allocation = {"주식": 70, "현금": 15, "채권": 10, "금": 5}
+        tactics.append("성장주·모멘텀 전략 유효 - 기술적 상승 추세 종목 위주 매수")
+        tactics.append("분할 매수로 평균 단가를 관리하며 비중 확대")
+        if nasdaq_chg > 0.5:
+            tactics.append("미국 기술주 강세 → 국내 반도체·IT 수혜 기대")
+        if usdkrw_chg > 0.3:
+            tactics.append("원화 약세 → 수출주(자동차·조선) 유리")
+        if us10y < 3.5:
+            tactics.append("저금리 환경 → 성장주·바이오 밸류에이션 부담 완화")
+
+    elif regime == "박스권 횡보":
+        strategy = "선별적 매수 (균형 배분)"
+        allocation = {"주식": 50, "현금": 25, "채권": 15, "금": 10}
+        tactics.append("밸류에이션 저평가 종목 중심 선별 매수")
+        tactics.append("배당주·방어주 비중 유지로 안정성 확보")
+        tactics.append("박스권 하단 매수, 상단 부분 익절 전략")
+        if us10y > 4.0:
+            tactics.append("고금리 환경 → 금융주 이자 마진 수혜")
+
+    elif regime == "약세 전환":
+        strategy = "방어적 운용 (보수적 배분)"
+        allocation = {"주식": 30, "현금": 35, "채권": 20, "금": 15}
+        tactics.append("주식 비중 축소, 현금 비중 확대로 유동성 확보")
+        tactics.append("고배당·유틸리티·통신 등 방어주 중심 포트폴리오")
+        tactics.append("손절 라인을 타이트하게 설정하여 손실 제한")
+        if gold_chg > 0:
+            tactics.append("금 가격 상승 중 → 안전자산 헤지 비중 유지")
+
+    elif regime in ("약세장", "공포 구간"):
+        strategy = "현금 비중 확대 (수비 모드)"
+        allocation = {"주식": 15, "현금": 45, "채권": 25, "금": 15}
+        tactics.append("신규 매수 자제, 기존 포지션 방어에 집중")
+        tactics.append("급락 시 우량주 소량 분할 매수로 장기 관점 접근")
+        tactics.append("역발상 투자: 공포 극대화 구간은 중장기 매수 기회")
+        if vix > 30:
+            tactics.append(f"VIX {vix:.0f} → 극단적 공포 후 반등 가능성 모니터링")
+
+    # 공통 주의사항
+    if vix > 25:
+        cautions.append(f"변동성 지수(VIX) {vix:.0f}으로 높은 편 - 포지션 규모 축소 권장")
+    if abs(usdkrw_chg) > 0.5:
+        direction = "급등" if usdkrw_chg > 0 else "급락"
+        cautions.append(f"환율 {direction} 중 - 외국인 수급 변동에 주의")
+    if us10y > 4.5:
+        cautions.append("미국 장기 금리 고공행진 - 성장주 밸류에이션 부담")
+    if us10y_chg > 3:
+        cautions.append("금리 급등 구간 - 채권 가격 하락, 주식 시장 압박")
+    if wti_chg > 3:
+        cautions.append("유가 급등 - 인플레이션 우려 및 운송·항공 비용 부담")
+    if shanghai_chg < -1.5:
+        cautions.append("중국 증시 급락 - 국내 수출주·원자재 관련주 영향 주의")
+    if not cautions:
+        cautions.append("특별한 리스크 요인은 감지되지 않았습니다")
+
+    # 유망 섹터
+    preferred_sectors = []
+    if regime in ("강세장", "완만한 상승"):
+        if nasdaq_chg > 0.3:
+            preferred_sectors.append("반도체")
+        if usdkrw_chg > 0.2:
+            preferred_sectors.extend(["자동차", "조선/해운"])
+        if copper_chg > 0.5:
+            preferred_sectors.append("2차전지")
+        if us10y < 3.5:
+            preferred_sectors.append("바이오")
+        if not preferred_sectors:
+            preferred_sectors = ["대형 우량주", "IT"]
+    elif regime == "박스권 횡보":
+        preferred_sectors = ["고배당주", "금융"]
+        if us10y > 4.0:
+            preferred_sectors.append("보험")
+    else:
+        preferred_sectors = ["유틸리티/통신", "고배당주", "금"]
+        if gold_chg > 0:
+            preferred_sectors.append("금 관련주")
+
+    return {
+        "regime": regime,
+        "regime_desc": regime_desc,
+        "strategy": strategy,
+        "allocation": allocation,
+        "tactics": tactics[:5],
+        "cautions": cautions[:4],
+        "preferred_sectors": preferred_sectors[:5],
+    }
+
+
 def macro_label(score: float) -> str:
     """매크로 점수를 라벨로 변환."""
     if score >= 70:

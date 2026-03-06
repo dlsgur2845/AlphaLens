@@ -18,6 +18,7 @@ from backend.services.stock_service import _get_stock_list
 from backend.services.recommendation_logic import (
     format_stock_item,
     derive_key_factors,
+    derive_market_strategy,
     derive_sector_outlook,
     macro_label,
 )
@@ -107,6 +108,7 @@ async def _build_market_summary() -> dict:
         "usd_krw_change_pct": round(usdkrw_info.get("change_pct", 0), 2) if usdkrw_info else None,
         "key_factors": derive_key_factors(macro_details, macro_score_val),
         "sector_outlook": derive_sector_outlook(macro_score_val, macro_details),
+        "market_strategy": derive_market_strategy(macro_score_val, macro_details),
         "macro_breakdown": {
             "us_market": macro_result.breakdown.us_market,
             "fx": macro_result.breakdown.fx,

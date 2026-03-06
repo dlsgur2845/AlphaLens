@@ -131,6 +131,14 @@ body::before { display: none; }
   font-weight: 800;
   letter-spacing: var(--tracking-tight);
   color: var(--accent);
+  line-height: 1.2;
+}
+.logo-sub {
+  display: block;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-muted);
+  letter-spacing: 0.02em;
 }
 
 /* Header Nav */
@@ -570,7 +578,16 @@ body::before { display: none; }
 /* Section entry stagger */
 .stock-summary, .stats-grid, .score-breakdown-card, .action-guide, .chart-panel, .news-panel, .related-section {
   animation: fadeSlideUp 0.35s ease-out both;
+  position: relative;
 }
+/* tooltip/dropdown이 아래 섹션에 가리지 않도록 역순 z-index */
+.stock-summary { z-index: 7; }
+.stats-grid { z-index: 6; }
+.score-breakdown-card { z-index: 5; }
+.action-guide { z-index: 4; }
+.chart-panel { z-index: 3; }
+.news-panel { z-index: 2; }
+.related-section { z-index: 1; }
 .stats-grid { animation-delay: 0.05s; }
 .score-breakdown-card { animation-delay: 0.075s; }
 .action-guide { animation-delay: 0.1s; }
@@ -1509,6 +1526,125 @@ body::before { display: none; }
 .sector-tag.positive { background: var(--green-bg); color: var(--green); }
 .sector-tag.negative { background: var(--red-bg); color: var(--red); }
 .sector-tag.neutral-sector { background: var(--bg-sunken); color: var(--text-muted); }
+
+/* ═══════════ Market Strategy ═══════════ */
+.market-strategy {
+  margin-top: 16px;
+  padding: 20px;
+  background: var(--bg-sunken);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-subtle);
+}
+.strategy-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+.strategy-regime {
+  font-size: 13px;
+  font-weight: 700;
+  padding: 4px 12px;
+  border-radius: 10px;
+  background: var(--accent-glow);
+  color: var(--accent-soft);
+  border: 1px solid var(--border-accent);
+}
+.strategy-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-heading);
+}
+.strategy-desc {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-bottom: 16px;
+  line-height: 1.5;
+}
+.strategy-body {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 16px;
+}
+.strategy-col {
+  background: var(--bg-card);
+  border-radius: var(--radius-sm);
+  padding: 14px;
+  border: 1px solid var(--border-subtle);
+}
+.strategy-section-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 10px;
+}
+.alloc-chart { display: flex; flex-direction: column; gap: 8px; }
+.alloc-item { display: flex; align-items: center; gap: 8px; }
+.alloc-label { font-size: 12px; color: var(--text-secondary); width: 36px; flex-shrink: 0; }
+.alloc-bar-wrap { flex: 1; height: 6px; background: var(--bg-sunken); border-radius: 3px; overflow: hidden; }
+.alloc-bar-fill { height: 100%; border-radius: 3px; transition: width 0.6s ease; }
+.alloc-bar-fill.alloc-주식 { background: var(--accent-soft); }
+.alloc-bar-fill.alloc-현금 { background: var(--green); }
+.alloc-bar-fill.alloc-채권 { background: var(--yellow); }
+.alloc-bar-fill.alloc-금 { background: var(--orange); }
+.alloc-pct { font-size: 12px; font-weight: 600; color: var(--text-primary); font-family: var(--font-mono); width: 30px; text-align: right; }
+.strategy-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.strategy-list li {
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+  padding-left: 12px;
+  position: relative;
+}
+.tactics-list li::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 8px;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--accent-soft);
+}
+.cautions-list li::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 8px;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--yellow);
+}
+.strategy-sectors {
+  margin-top: 14px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.preferred-sectors { display: flex; gap: 6px; flex-wrap: wrap; }
+.preferred-sector-tag {
+  font-size: 12px;
+  font-weight: 500;
+  padding: 4px 12px;
+  border-radius: 10px;
+  background: var(--accent-glow);
+  color: var(--accent-soft);
+  border: 1px solid var(--border-accent);
+}
+@media (max-width: 768px) {
+  .strategy-body { grid-template-columns: 1fr; }
+}
 
 /* ═══════════ Geopolitical Risk ═══════════ */
 .geo-dashboard {

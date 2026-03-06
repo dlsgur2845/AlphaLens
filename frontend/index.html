@@ -9,8 +9,7 @@
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="manifest" href="/manifest.json">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
-  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/css/style.css?v=8">
+  <link rel="stylesheet" href="/css/style.css?v=10">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js" integrity="sha384-vsrfeLOOY6KuIYKDlmVH5UiBmgIdB1oEf7p01YgWHuqmOHfZr374+odEv96n9tNC" crossorigin="anonymous"></script>
   <noscript><style>.app-content{display:flex;justify-content:center;align-items:center;min-height:80vh;}.noscript-msg{color:#94a3b8;text-align:center;}</style></noscript>
 </head>
@@ -21,17 +20,11 @@
   <header class="top-header">
     <div class="header-left">
       <div class="logo-wrap" id="logoHome" style="cursor:pointer" title="홈으로 (Esc)">
-        <h1 class="logo-text">주가분석</h1>
+        <h1 class="logo-text">AlphaLens<span class="logo-sub">주식 분석</span></h1>
       </div>
-      <nav class="header-nav">
-        <a class="header-link" href="#" data-nav="favorites">관심종목</a>
-        <a class="header-link" href="#" data-nav="market">시장</a>
-        <a class="header-link" href="#" data-nav="recommend">추천</a>
-      </nav>
     </div>
     <div class="header-right">
       <div class="search-container">
-        <span class="material-symbols-outlined search-icon">search</span>
         <label for="searchInput" class="sr-only">종목 검색</label>
         <input type="text" id="searchInput" placeholder="종목 코드 또는 명칭 검색" autocomplete="off">
         <div id="searchResults" class="search-dropdown"></div>
@@ -45,21 +38,11 @@
       <div class="sidebar-section">
         <p class="sidebar-label">메뉴</p>
         <nav class="sidebar-nav">
-          <a class="sidebar-item active" href="#" data-nav="home" id="sideHome">
-            <span class="material-symbols-outlined">home</span><span>홈</span>
-          </a>
-          <a class="sidebar-item" href="#" data-nav="market" id="sideMarket">
-            <span class="material-symbols-outlined">trending_up</span><span>시장 현황</span>
-          </a>
-          <a class="sidebar-item" href="#" data-nav="recommend" id="sideRecommend">
-            <span class="material-symbols-outlined">auto_awesome</span><span>추천 종목</span>
-          </a>
-          <a class="sidebar-item" href="#" data-nav="compare" id="sideCompare">
-            <span class="material-symbols-outlined">compare_arrows</span><span>종목 비교</span>
-          </a>
-          <a class="sidebar-item" href="#" data-nav="favorites" id="sideFavorites">
-            <span class="material-symbols-outlined">star</span><span>관심종목</span>
-          </a>
+          <a class="sidebar-item active" href="#" data-nav="home" id="sideHome">홈</a>
+          <a class="sidebar-item" href="#" data-nav="market" id="sideMarket">시장 현황</a>
+          <a class="sidebar-item" href="#" data-nav="recommend" id="sideRecommend">추천 종목</a>
+          <a class="sidebar-item" href="#" data-nav="compare" id="sideCompare">종목 비교</a>
+          <a class="sidebar-item" href="#" data-nav="favorites" id="sideFavorites">관심종목</a>
         </nav>
       </div>
       <!-- 서버 모니터 (사이드바 하단) -->
@@ -95,7 +78,7 @@
           <div id="favoritesSection" class="content-section" style="display:none">
             <div class="section-header">
               <span class="section-title">관심종목</span>
-              <button class="clear-btn" id="clearFavorites">지우기</button>
+              <button class="clear-btn" id="moreFavorites">더보기</button>
             </div>
             <div class="stock-cards-grid" id="favoritesGrid"></div>
           </div>
@@ -104,7 +87,7 @@
           <div id="recentSection" class="content-section" style="display:none">
             <div class="section-header">
               <span class="section-title">최근 검색</span>
-              <button class="clear-btn" id="clearRecent">지우기</button>
+              <button class="clear-btn" id="moreRecent">더보기</button>
             </div>
             <div class="stock-cards-grid" id="recentGrid"></div>
           </div>
@@ -142,6 +125,7 @@
                 <div class="market-factors" id="msKeyFactors"></div>
                 <div class="market-sector-outlook" id="msSectorOutlook"></div>
               </div>
+              <div class="market-strategy" id="msStrategy" style="display:none"></div>
             </div>
           </div>
 
@@ -203,6 +187,28 @@
               <div class="skeleton-block"></div>
             </div>
           </div>
+
+          <!-- 종목 비교 -->
+          <div id="compareSection" class="content-section" style="display:none">
+            <div class="section-header">
+              <span class="section-title">종목 비교</span>
+            </div>
+            <div class="compare-search-row">
+              <div class="compare-slot">
+                <label for="compareInput1" class="sr-only">종목 1</label>
+                <input type="text" id="compareInput1" class="compare-input" placeholder="종목 1 검색..." autocomplete="off">
+                <div id="compareDropdown1" class="search-dropdown"></div>
+                <div id="compareResult1" class="compare-result"></div>
+              </div>
+              <div class="compare-vs">VS</div>
+              <div class="compare-slot">
+                <label for="compareInput2" class="sr-only">종목 2</label>
+                <input type="text" id="compareInput2" class="compare-input" placeholder="종목 2 검색..." autocomplete="off">
+                <div id="compareDropdown2" class="search-dropdown"></div>
+                <div id="compareResult2" class="compare-result"></div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -211,9 +217,6 @@
         <!-- 종목 요약 -->
         <section class="stock-summary" id="stockSummary">
           <div class="summary-left">
-            <div class="stock-icon-wrap">
-              <span class="material-symbols-outlined stock-icon-lg">analytics</span>
-            </div>
             <div>
               <div class="stock-name-row">
                 <h2 id="stockName" class="stock-name">-</h2>
@@ -224,7 +227,6 @@
           </div>
           <div class="summary-right">
             <button id="favToggle" class="fav-btn" title="관심종목 추가 (F)">
-              <span class="material-symbols-outlined">add_circle</span>
               <span>관심종목 추가</span>
             </button>
           </div>
@@ -362,7 +364,7 @@
 
           <div class="news-panel">
             <div class="panel-header">
-              <h3><span class="material-symbols-outlined panel-icon">newspaper</span> 실시간 뉴스</h3>
+              <h3>실시간 뉴스</h3>
               <div class="news-summary" id="newsSummary"></div>
             </div>
             <div class="news-list" id="newsList"><div class="skeleton-block"></div></div>
@@ -379,29 +381,6 @@
         </section>
       </div>
 
-      <!-- 종목 비교 -->
-      <div id="compareOverlay" class="compare-overlay" style="display:none">
-        <div class="compare-header">
-          <h2>종목 비교</h2>
-          <button id="compareClose" class="compare-close-btn" title="닫기">&times;</button>
-        </div>
-        <div class="compare-search-row">
-          <div class="compare-slot">
-            <label for="compareInput1" class="sr-only">종목 1</label>
-            <input type="text" id="compareInput1" class="compare-input" placeholder="종목 1 검색..." autocomplete="off">
-            <div id="compareDropdown1" class="search-dropdown"></div>
-            <div id="compareResult1" class="compare-result"></div>
-          </div>
-          <div class="compare-vs">VS</div>
-          <div class="compare-slot">
-            <label for="compareInput2" class="sr-only">종목 2</label>
-            <input type="text" id="compareInput2" class="compare-input" placeholder="종목 2 검색..." autocomplete="off">
-            <div id="compareDropdown2" class="search-dropdown"></div>
-            <div id="compareResult2" class="compare-result"></div>
-          </div>
-        </div>
-      </div>
-
       <!-- 로딩 -->
       <div id="loadingOverlay" class="loading-overlay" style="display:none">
         <div class="spinner"></div><p>분석 중...</p>
@@ -412,11 +391,11 @@
 
   <!-- 모바일 하단 네비게이션 -->
   <nav class="mobile-nav" id="mobileNav">
-    <button class="mobile-nav-item active" data-nav="home"><span class="material-symbols-outlined">home</span><span>홈</span></button>
-    <button class="mobile-nav-item" data-nav="market"><span class="material-symbols-outlined">trending_up</span><span>시장</span></button>
-    <button class="mobile-nav-item" data-nav="recommend"><span class="material-symbols-outlined">auto_awesome</span><span>추천</span></button>
-    <button class="mobile-nav-item" data-nav="favorites"><span class="material-symbols-outlined">star</span><span>관심</span></button>
-    <button class="mobile-nav-item" data-nav="compare"><span class="material-symbols-outlined">compare_arrows</span><span>비교</span></button>
+    <button class="mobile-nav-item active" data-nav="home">홈</button>
+    <button class="mobile-nav-item" data-nav="market">시장</button>
+    <button class="mobile-nav-item" data-nav="recommend">추천</button>
+    <button class="mobile-nav-item" data-nav="favorites">관심</button>
+    <button class="mobile-nav-item" data-nav="compare">비교</button>
   </nav>
 
   <!-- 키보드 단축키 힌트 -->
@@ -427,12 +406,12 @@
   </div>
 </div>
 
-<script src="/js/api.js?v=8"></script>
-<script src="/js/storage.js?v=8"></script>
-<script src="/js/chart.js?v=8"></script>
-<script src="/js/score.js?v=8"></script>
-<script src="/js/search.js?v=8"></script>
-<script src="/js/stream.js?v=8"></script>
-<script src="/js/app.js?v=8"></script>
+<script src="/js/api.js?v=10"></script>
+<script src="/js/storage.js?v=10"></script>
+<script src="/js/chart.js?v=10"></script>
+<script src="/js/score.js?v=10"></script>
+<script src="/js/search.js?v=10"></script>
+<script src="/js/stream.js?v=10"></script>
+<script src="/js/app.js?v=10"></script>
 </body>
 </html>
