@@ -8,6 +8,7 @@ const Storage = {
     RECENT: 'alphalens_recent',
     FAVORITES: 'alphalens_favorites',
     SCORE_HISTORY: 'alphalens_score_history',
+    PORTFOLIO: 'alphalens_portfolio',
   },
   MAX_RECENT: 20,
   MAX_SCORE_HISTORY: 30,
@@ -107,6 +108,42 @@ const Storage = {
       favs[idx].over_market = stock.over_market || null;
       this._save(this.KEYS.FAVORITES, favs);
     }
+  },
+
+  // ── Portfolio ──
+
+  getPortfolio() {
+    return this._load(this.KEYS.PORTFOLIO);
+  },
+
+  addPortfolioHolding(holding) {
+    const list = this.getPortfolio().filter((h) => h.code !== holding.code);
+    list.push({
+      code: holding.code,
+      name: holding.name || holding.code,
+      quantity: holding.quantity,
+      avg_price: holding.avg_price,
+      addedAt: Date.now(),
+    });
+    this._save(this.KEYS.PORTFOLIO, list);
+  },
+
+  updatePortfolioHolding(code, updates) {
+    const list = this.getPortfolio();
+    const idx = list.findIndex((h) => h.code === code);
+    if (idx >= 0) {
+      Object.assign(list[idx], updates);
+      this._save(this.KEYS.PORTFOLIO, list);
+    }
+  },
+
+  removePortfolioHolding(code) {
+    const list = this.getPortfolio().filter((h) => h.code !== code);
+    this._save(this.KEYS.PORTFOLIO, list);
+  },
+
+  clearPortfolio() {
+    this._save(this.KEYS.PORTFOLIO, []);
   },
 
   // ── Score History ──

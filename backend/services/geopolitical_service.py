@@ -214,6 +214,43 @@ KEYWORD_GROUPS_EN = [
     ["supply chain", "decoupling", "reshoring"],
 ]
 
+# ── 이벤트 시간축 분류 ──
+# primary: 해당 이벤트가 가장 영향을 미치는 시간축
+# secondary: 부차적 영향 시간축 (가중치 0.4)
+
+EVENT_TIME_HORIZON: dict[str, dict] = {
+    "war_conflict":      {"primary": "short", "secondary": "mid",  "decay": 0.7},
+    "nk_peninsula":      {"primary": "short", "secondary": "mid",  "decay": 0.6},
+    "oil_energy":        {"primary": "short", "secondary": "mid",  "decay": 0.5},
+    "monetary_policy":   {"primary": "mid",   "secondary": "long", "decay": 0.3},
+    "trade_tariff":      {"primary": "mid",   "secondary": "long", "decay": 0.3},
+    "fx_currency":       {"primary": "mid",   "secondary": "short","decay": 0.4},
+    "supply_chain":      {"primary": "long",  "secondary": "mid",  "decay": 0.2},
+    "china_economy":     {"primary": "long",  "secondary": "mid",  "decay": 0.3},
+    "tech_semiconductor":{"primary": "long",  "secondary": "mid",  "decay": 0.2},
+}
+
+HORIZON_META = {
+    "short": {
+        "label": "단기 리스크",
+        "period": "1~2주",
+        "desc": "이벤트 충격에 의한 급변동 가능성",
+        "action_prefix": "즉시 대응",
+    },
+    "mid": {
+        "label": "중기 리스크",
+        "period": "1~3개월",
+        "desc": "정책·트렌드 변화에 따른 섹터 로테이션",
+        "action_prefix": "포지션 조정",
+    },
+    "long": {
+        "label": "장기 리스크",
+        "period": "6개월~1년",
+        "desc": "구조적 변화에 따른 전략 방향 재검토",
+        "action_prefix": "전략 재검토",
+    },
+}
+
 # ── 이벤트 → 섹터 영향 매트릭스 ──
 # 양수 = 수혜, 음수 = 피해 (최대 ±20)
 
@@ -658,6 +695,149 @@ def _calc_risk_index(
     return {"score": round(score, 1), "level": level, "label": label}
 
 
+# ── 시간축별 리스크 분석 ──
+
+
+def _calc_horizon_risks(
+    detected_events: dict[str, dict],
+    macro_data: dict | None = None,
+) -> dict[str, dict]:
+    """단기/중기/장기 시간축별 리스크 점수와 핵심 이벤트 산출."""
+    horizon_scores: dict[str, float] = {"short": 0, "mid": 0, "long": 0}
+    horizon_events: dict[str, list] = {"short": [], "mid": [], "long": []}
+    horizon_max_severity: dict[str, float] = {"short": 0, "mid": 0, "long": 0}
+
+    for cat_id, event in detected_events.items():
+        th = EVENT_TIME_HORIZON.get(cat_id)
+        if not th:
+            continue
+
+        sev = event["severity_score"]  # 1.0 ~ 4.0
+        intensity = event.get("intensity", 50)
+
+        # primary 시간축 — severity 중심, intensity 보조
+        primary = th["primary"]
+        primary_contrib = sev * 8 + intensity * 0.1
+        horizon_scores[primary] += primary_contrib
+        horizon_max_severity[primary] = max(horizon_max_severity[primary], sev)
+        horizon_events[primary].append({
+            "label": event["label"],
+            "icon": event["icon"],
+            "severity": event["severity"],
+            "role": "primary",
+        })
+
+        # secondary 시간축 (25% 전파)
+        secondary = th["secondary"]
+        secondary_contrib = primary_contrib * 0.25
+        horizon_scores[secondary] += secondary_contrib
+        horizon_events[secondary].append({
+            "label": event["label"],
+            "icon": event["icon"],
+            "severity": event["severity"],
+            "role": "secondary",
+        })
+
+    # 매크로 데이터로 단기 리스크 보정
+    if macro_data:
+        vix = macro_data.get("vix", {}).get("price", 20)
+        usdkrw = macro_data.get("usdkrw", {}).get("price", 1400)
+        oil_chg = abs(macro_data.get("wti", {}).get("change_pct", 0))
+
+        # VIX → 단기 충격
+        if vix > 30:
+            horizon_scores["short"] += 15
+        elif vix > 25:
+            horizon_scores["short"] += 8
+
+        # 유가 급변 → 단기
+        if oil_chg > 5:
+            horizon_scores["short"] += 10
+        elif oil_chg > 3:
+            horizon_scores["short"] += 5
+
+        # 환율 수준 → 중기
+        if usdkrw > 1480:
+            horizon_scores["mid"] += 10
+        elif usdkrw > 1430:
+            horizon_scores["mid"] += 5
+
+    result = {}
+    for horizon in ("short", "mid", "long"):
+        raw = horizon_scores[horizon]
+        # 다수 이벤트 동시 감지 시 로그 스케일 감쇠 적용
+        primary_count = sum(
+            1 for e in horizon_events[horizon] if e.get("role") == "primary"
+        )
+        if primary_count > 3:
+            raw *= 1.0 + 0.1 * (primary_count - 3)  # 3개 초과 시 미미한 가산만
+            raw = min(raw, 90)  # 단일 시간축 최대 90 (종합만 100 가능)
+        # 이벤트 없으면 기본 15점 (리스크 0은 비현실적)
+        score = max(min(raw, 95), 15) if raw > 0 else 15.0
+
+        if score >= 70:
+            level, label_text = "매우 높음", "위험"
+        elif score >= 50:
+            level, label_text = "높음", "경계"
+        elif score >= 30:
+            level, label_text = "보통", "주의"
+        else:
+            level, label_text = "낮음", "안정"
+
+        meta = HORIZON_META[horizon]
+
+        # 시간축별 투자 가이드
+        guidance = _horizon_guidance(horizon, score, horizon_events[horizon])
+
+        result[horizon] = {
+            "score": round(score, 1),
+            "level": level,
+            "label": label_text,
+            "horizon_label": meta["label"],
+            "period": meta["period"],
+            "description": meta["desc"],
+            "key_events": horizon_events[horizon][:3],
+            "guidance": guidance,
+        }
+
+    return result
+
+
+def _horizon_guidance(
+    horizon: str, score: float, events: list[dict],
+) -> str:
+    """시간축별 점수에 따른 투자 가이드 문구 생성."""
+    event_labels = [e["label"] for e in events if e.get("role") == "primary"]
+    context = ", ".join(event_labels[:2]) if event_labels else ""
+
+    if horizon == "short":
+        if score >= 70:
+            return f"즉시 방어 전환 필요 — {context} 충격으로 급변동 예상, 현금 비중 확대 및 손절 점검"
+        if score >= 50:
+            return f"포지션 축소 검토 — {context} 관련 변동성 확대 구간, 위험 자산 비중 조절"
+        if score >= 30:
+            return f"모니터링 강화 — {context + ' ' if context else ''}단기 변동성 소폭 확대 가능"
+        return "단기 충격 요인 미미 — 기존 포지션 유지"
+
+    if horizon == "mid":
+        if score >= 70:
+            return f"섹터 로테이션 필요 — {context} 영향으로 기존 전략 재검토, 방어주/배당주 선호"
+        if score >= 50:
+            return f"비중 조절 권고 — {context} 추이 주시하며 피해 섹터 축소, 수혜 섹터 확대"
+        if score >= 30:
+            return f"선별적 대응 — {context + ' ' if context else ''}정책 변화 모니터링하며 기회 탐색"
+        return "중기 트렌드 안정 — 현재 섹터 배분 유지"
+
+    # long
+    if score >= 70:
+        return f"포트폴리오 전략 전환 — {context} 등 구조적 변화 가속, 테마 및 전략 방향 재설정"
+    if score >= 50:
+        return f"점진적 전략 조정 — {context} 변화 반영하여 장기 포지션 점검"
+    if score >= 30:
+        return f"변화 추적 — {context + ' ' if context else ''}장기 트렌드 변화 가능성 인지"
+    return "구조적 안정 — 장기 전략 유지, 정기 리밸런싱 수준"
+
+
 # ── 시나리오 트리거 ──
 
 
@@ -985,6 +1165,9 @@ async def _build_geopolitical_analysis() -> dict:
     # 리스크 인덱스
     risk_index = _calc_risk_index(detected_events, macro_data)
 
+    # 시간축별 리스크 분석
+    horizon_risks = _calc_horizon_risks(detected_events, macro_data)
+
     # 시나리오 트리거
     triggers = _get_scenario_triggers(macro_data)
 
@@ -1008,6 +1191,7 @@ async def _build_geopolitical_analysis() -> dict:
 
     result = {
         "risk_index": risk_index,
+        "horizon_risks": horizon_risks,
         "detected_events": detected_events,
         "sector_impacts": sector_impacts,
         "scenario_triggers": triggers,

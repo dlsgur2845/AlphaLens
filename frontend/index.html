@@ -41,6 +41,7 @@
           <a class="sidebar-item active" href="#" data-nav="home" id="sideHome">홈</a>
           <a class="sidebar-item" href="#" data-nav="market" id="sideMarket">시장 현황</a>
           <a class="sidebar-item" href="#" data-nav="recommend" id="sideRecommend">추천 종목</a>
+          <a class="sidebar-item" href="#" data-nav="portfolio" id="sidePortfolio">내 포트폴리오</a>
           <a class="sidebar-item" href="#" data-nav="compare" id="sideCompare">종목 비교</a>
           <a class="sidebar-item" href="#" data-nav="favorites" id="sideFavorites">관심종목</a>
         </nav>
@@ -165,6 +166,11 @@
                 </div>
               </div>
             </div>
+            <!-- 시간축별 리스크 분석 -->
+            <div class="geo-horizon-section" id="geoHorizonSection" style="display:none">
+              <div class="geo-section-label">시간축별 리스크 분석</div>
+              <div class="geo-horizon-grid" id="geoHorizonGrid"></div>
+            </div>
           </div>
 
           <!-- 추천 종목 -->
@@ -186,6 +192,67 @@
             <div class="recommend-grid" id="avoidGrid">
               <div class="skeleton-block"></div>
             </div>
+          </div>
+
+          <!-- 포트폴리오 -->
+          <div id="portfolioSection" class="content-section" style="display:none">
+            <div class="section-header">
+              <span class="section-title">내 포트폴리오</span>
+              <button class="clear-btn" id="portfolioRefreshBtn">새로고침</button>
+            </div>
+            <!-- 종목 추가 폼 -->
+            <div class="portfolio-add-form">
+              <div class="portfolio-add-row">
+                <div class="portfolio-search-wrap">
+                  <label for="portfolioSearchInput" class="sr-only">종목 검색</label>
+                  <input type="text" id="portfolioSearchInput" class="portfolio-input" placeholder="종목 검색..." autocomplete="off">
+                  <div id="portfolioSearchDropdown" class="search-dropdown"></div>
+                </div>
+                <div class="portfolio-field">
+                  <label for="portfolioQty" class="sr-only">수량</label>
+                  <input type="number" id="portfolioQty" class="portfolio-input portfolio-num" placeholder="수량" min="1">
+                </div>
+                <div class="portfolio-field">
+                  <label for="portfolioAvgPrice" class="sr-only">평균단가</label>
+                  <input type="number" id="portfolioAvgPrice" class="portfolio-input portfolio-num" placeholder="평균단가" min="1">
+                </div>
+                <button class="portfolio-add-btn" id="portfolioAddBtn" disabled>추가</button>
+              </div>
+              <div class="portfolio-add-info" id="portfolioAddInfo"></div>
+            </div>
+            <!-- 포트폴리오 요약 -->
+            <div class="portfolio-summary" id="portfolioSummary" style="display:none">
+              <div class="portfolio-summary-grid">
+                <div class="portfolio-stat">
+                  <span class="portfolio-stat-label">총 투자금</span>
+                  <span class="portfolio-stat-value" id="pfTotalInvested">-</span>
+                </div>
+                <div class="portfolio-stat">
+                  <span class="portfolio-stat-label">총 평가금</span>
+                  <span class="portfolio-stat-value" id="pfTotalValue">-</span>
+                </div>
+                <div class="portfolio-stat">
+                  <span class="portfolio-stat-label">총 수익</span>
+                  <span class="portfolio-stat-value" id="pfTotalPnl">-</span>
+                </div>
+                <div class="portfolio-stat">
+                  <span class="portfolio-stat-label">수익률</span>
+                  <span class="portfolio-stat-value" id="pfTotalPnlPct">-</span>
+                </div>
+                <div class="portfolio-stat">
+                  <span class="portfolio-stat-label">평균 점수</span>
+                  <span class="portfolio-stat-value" id="pfAvgScore">-</span>
+                </div>
+                <div class="portfolio-stat portfolio-stat-wide">
+                  <span class="portfolio-stat-label">전체 전략</span>
+                  <span class="portfolio-stat-value" id="pfDirection">-</span>
+                </div>
+              </div>
+              <!-- 전체 전략 상세 -->
+              <div class="portfolio-overall-strategy" id="pfOverallStrategy" style="display:none"></div>
+            </div>
+            <!-- 종목별 카드 -->
+            <div class="portfolio-holdings" id="portfolioHoldings"></div>
           </div>
 
           <!-- 종목 비교 -->
@@ -371,6 +438,32 @@
           </div>
         </section>
 
+        <!-- 투자자별 매매동향 -->
+        <section class="investor-section" id="investorSection" style="display:none">
+          <div class="panel-header">
+            <h3>투자자별 매매동향</h3>
+            <span class="investor-period" id="investorPeriod"></span>
+          </div>
+          <div class="investor-summary" id="investorSummary"></div>
+          <div class="investor-chart-wrap">
+            <canvas id="investorChart" height="200"></canvas>
+          </div>
+          <div class="investor-table-wrap">
+            <table class="investor-table" id="investorTable">
+              <thead>
+                <tr>
+                  <th>날짜</th>
+                  <th>외국인</th>
+                  <th>기관</th>
+                  <th>개인</th>
+                  <th>외국인 보유</th>
+                </tr>
+              </thead>
+              <tbody id="investorTableBody"></tbody>
+            </table>
+          </div>
+        </section>
+
         <!-- 관련기업 -->
         <section class="related-section">
           <div class="panel-header">
@@ -394,8 +487,8 @@
     <button class="mobile-nav-item active" data-nav="home">홈</button>
     <button class="mobile-nav-item" data-nav="market">시장</button>
     <button class="mobile-nav-item" data-nav="recommend">추천</button>
+    <button class="mobile-nav-item" data-nav="portfolio">포트폴리오</button>
     <button class="mobile-nav-item" data-nav="favorites">관심</button>
-    <button class="mobile-nav-item" data-nav="compare">비교</button>
   </nav>
 
   <!-- 키보드 단축키 힌트 -->

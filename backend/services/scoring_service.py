@@ -30,6 +30,11 @@ from backend.services.signal_service import calc_signal_score
 from backend.services.macro_service import get_macro_score
 from backend.services.risk_service import calc_risk_score
 
+try:
+    from backend.services.credit_service import get_credit_balance
+except ImportError:
+    get_credit_balance = None
+
 # 7팩터 가중치
 W_TECHNICAL = 0.23
 W_FUNDAMENTAL = 0.19
@@ -199,16 +204,29 @@ async def calculate_score(code: str) -> ScoringResult:
     async def _with_timeout(coro, timeout_sec: float):
         return await asyncio.wait_for(coro, timeout=timeout_sec)
 
+    # 신용잔고 데이터 병렬 조회 (선택적)
+    credit_coro = (
+        _with_timeout(get_credit_balance(code), 10.0)
+        if get_credit_balance
+        else asyncio.sleep(0)
+    )
+
     results = await asyncio.gather(
         _with_timeout(get_price_history(code, days=200), 15.0),
         _with_timeout(get_stock_detail(code), 10.0),
         _with_timeout(get_stock_news(code, stock_name=name, max_articles=15), 10.0),
         _with_timeout(_calc_related_score(code), 20.0),
+        credit_coro,
         return_exceptions=True,
     )
 
     price_history = None if isinstance(results[0], BaseException) else results[0]
     detail = None if isinstance(results[1], BaseException) else results[1]
+
+    # 신용잔고 데이터
+    credit_data = None
+    if get_credit_balance and not isinstance(results[4], BaseException):
+        credit_data = results[4]
 
     # 섹터 정보
     sector = detail.sector if detail else None
@@ -270,11 +288,15 @@ async def calculate_score(code: str) -> ScoringResult:
         related_score, related_details = results[3]
         all_details["related"] = related_details
 
+    # 신용잔고 상세
+    if credit_data:
+        all_details["credit"] = credit_data
+
     # 4) 시그널 점수 (20%)
     signal_score = 50.0
     try:
         if len(closes) >= 20:
-            signal_result = calc_signal_score(closes, volumes)
+            signal_result = calc_signal_score(closes, volumes, credit_data=credit_data)
             signal_score = signal_result.score
             all_details["signal"] = {
                 "score": signal_result.score,
@@ -320,7 +342,7 @@ async def calculate_score(code: str) -> ScoringResult:
     risk_grade = "C"
     try:
         if len(closes) >= 20:
-            risk_result = calc_risk_score(closes, volumes)
+            risk_result = calc_risk_score(closes, volumes, credit_data=credit_data)
             risk_score = risk_result.score
             risk_grade = risk_result.grade
             all_details["risk"] = {

@@ -523,6 +523,75 @@ async def get_price_history(code: str, days: int = 90) -> PriceHistory | None:
     return result
 
 
+async def get_investor_trend(code: str, days: int = 20) -> list[dict] | None:
+    """투자자별 매매동향 조회 (네이버 금융 모바일 API).
+
+    Returns list of dicts with keys:
+        date, foreign, institution, individual, foreign_hold_ratio, close, change, volume
+    """
+    cache_key = f"investor:{code}"
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    if not _cb_naver_mobile.can_execute():
+        return None
+
+    client = get_mobile_client()
+    try:
+        resp = await client.get(
+            f"https://m.stock.naver.com/api/stock/{code}/trend",
+            timeout=8.0,
+        )
+        resp.raise_for_status()
+        raw = resp.json()
+        _cb_naver_mobile.record_success()
+    except (httpx.HTTPStatusError, httpx.RequestError, json.JSONDecodeError) as e:
+        logger.warning("투자자 매매동향 조회 실패 (%s): %s", code, e)
+        _cb_naver_mobile.record_failure()
+        return None
+
+    if not isinstance(raw, list) or len(raw) == 0:
+        return None
+
+    def _parse_int(val: str) -> int:
+        try:
+            return int(val.replace(",", "").replace("+", ""))
+        except (ValueError, AttributeError):
+            return 0
+
+    result = []
+    for item in raw[:days]:
+        bizdate = item.get("bizdate", "")
+        date_str = f"{bizdate[:4]}-{bizdate[4:6]}-{bizdate[6:8]}" if len(bizdate) == 8 else bizdate
+
+        direction = item.get("compareToPreviousPrice", {}).get("name", "")
+        close = _parse_int(item.get("closePrice", "0"))
+        change = _parse_int(item.get("compareToPreviousClosePrice", "0"))
+        if direction in ("FALLING", "LOWER_LIMIT"):
+            change = -abs(change)
+
+        hold_ratio_str = item.get("foreignerHoldRatio", "0%").replace("%", "")
+        try:
+            hold_ratio = float(hold_ratio_str)
+        except ValueError:
+            hold_ratio = 0.0
+
+        result.append({
+            "date": date_str,
+            "foreign": _parse_int(item.get("foreignerPureBuyQuant", "0")),
+            "institution": _parse_int(item.get("organPureBuyQuant", "0")),
+            "individual": _parse_int(item.get("individualPureBuyQuant", "0")),
+            "foreign_hold_ratio": hold_ratio,
+            "close": close,
+            "change": change,
+            "volume": _parse_int(item.get("accumulatedTradingVolume", "0")),
+        })
+
+    cache.set(cache_key, result, ttl=300)
+    return result
+
+
 async def get_sector_stocks(sector: str, market: str) -> list[dict]:
     """동일 업종 종목 목록 - 네이버 금융 업종별."""
     cache_key = f"sector:{market}:{sector}"

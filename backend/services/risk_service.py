@@ -171,15 +171,57 @@ def _calc_atr(closes: pd.Series, period: int = 14) -> float | None:
     return round(atr, 2)
 
 
-def calc_risk_score(closes: pd.Series, volumes: pd.Series) -> RiskScore:
+def _leverage_risk_score(credit_data: dict | None) -> float:
+    """신용잔고 기반 레버리지 리스크 점수 (0~100, 높을수록 안전)."""
+    if not credit_data:
+        return 50.0  # 데이터 없으면 중립
+
+    credit_ratio = credit_data.get("credit_ratio", 0)
+
+    # 신용비율 기반 리스크 평가
+    breakpoints = [
+        (0.5, 95),   # 0.5% 이하: 매우 안전
+        (2.0, 75),   # 2% 이하: 안전
+        (5.0, 50),   # 5% 이하: 보통
+        (10.0, 25),  # 10% 이하: 위험
+        (20.0, 5),   # 20% 이상: 매우 위험
+    ]
+    base = _interpolate_score(credit_ratio, breakpoints)
+
+    # 공매도비율 보정 (높으면 숏 스퀴즈 리스크 = 변동성 상승)
+    short_ratio = credit_data.get("short_ratio", 0)
+    if short_ratio > 5:
+        base *= 0.9  # 10% 감점
+
+    return round(base, 1)
+
+
+def calc_risk_score(
+    closes: pd.Series,
+    volumes: pd.Series,
+    credit_data: dict | None = None,
+) -> RiskScore:
     """종합 리스크 스코어 계산."""
     vol_score = _volatility_score(closes)
     mdd_s = _mdd_score(closes)
     var_s = _var_cvar_score(closes)
     liq_score = _liquidity_score(volumes)
+    lev_score = _leverage_risk_score(credit_data)
 
-    # 가중 평균 (변동성 30%, MDD 25%, VaR/CVaR 20%, 유동성 25%)
-    total = vol_score * 0.30 + mdd_s * 0.25 + var_s * 0.20 + liq_score * 0.25
+    # 가중 평균 (신용잔고 데이터 유무에 따라 가중치 조정)
+    if credit_data:
+        # 레버리지 리스크 포함: 변동성 28% + MDD 23% + VaR 18% + 유동성 23% + 레버리지 8%
+        total = (
+            vol_score * 0.28
+            + mdd_s * 0.23
+            + var_s * 0.18
+            + liq_score * 0.23
+            + lev_score * 0.08
+        )
+    else:
+        # 기존 가중치 유지
+        total = vol_score * 0.30 + mdd_s * 0.25 + var_s * 0.20 + liq_score * 0.25
+
     total = float(np.clip(total, 0, 100))
 
     return RiskScore(
@@ -190,6 +232,7 @@ def calc_risk_score(closes: pd.Series, volumes: pd.Series) -> RiskScore:
             mdd=round(mdd_s, 1),
             var_cvar=round(var_s, 1),
             liquidity=round(liq_score, 1),
+            leverage=round(lev_score, 1),
         ),
         position_size_pct=round(_calc_position_size(closes, total), 1),
         atr=_calc_atr(closes),

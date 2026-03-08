@@ -138,6 +138,7 @@ class RiskBreakdown(BaseModel):
     mdd: float = 0.0
     var_cvar: float = 0.0
     liquidity: float = 0.0
+    leverage: float = 50.0  # 신용잔고 레버리지 리스크 (50=중립/데이터없음)
 
 
 class RiskScore(BaseModel):

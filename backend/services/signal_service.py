@@ -260,7 +260,50 @@ def _sell_signals(closes: pd.Series) -> tuple[float, list[str]]:
     return float(np.clip(score, -55, 0)), signals
 
 
-def calc_signal_score(closes: pd.Series, volumes: pd.Series) -> SignalScore:
+def _credit_signal(credit_data: dict | None) -> tuple[float, list[str]]:
+    """신용잔고 기반 시그널 (-10 ~ +10점).
+
+    신용비율이 높으면 → 과열 경고 (매도 신호)
+    신용비율이 낮으면 → 안전 (약한 매수 보조)
+    공매도비율이 높으면 → 숏 스퀴즈 가능성 (매수 보조)
+    """
+    score = 0.0
+    signals = []
+
+    if not credit_data:
+        return score, signals
+
+    credit_ratio = credit_data.get("credit_ratio", 0)
+    short_ratio = credit_data.get("short_ratio", 0)
+
+    # 신용비율 분석 (높을수록 과열)
+    if credit_ratio > 10:
+        score -= 10
+        signals.append(f"신용비율 {credit_ratio:.1f}% (과열 경고, 반대매매 위험)")
+    elif credit_ratio > 5:
+        score -= 5
+        signals.append(f"신용비율 {credit_ratio:.1f}% (주의)")
+    elif credit_ratio > 3:
+        score -= 2
+    elif credit_ratio > 0 and credit_ratio < 1:
+        score += 3
+        signals.append(f"신용비율 {credit_ratio:.1f}% (안전)")
+
+    # 공매도비율 분석 (높으면 숏 스퀴즈 가능성)
+    if short_ratio > 5:
+        score += 5
+        signals.append(f"공매도비율 {short_ratio:.1f}% (숏 스퀴즈 가능성)")
+    elif short_ratio > 3:
+        score += 2
+
+    return float(np.clip(score, -10, 10)), signals
+
+
+def calc_signal_score(
+    closes: pd.Series,
+    volumes: pd.Series,
+    credit_data: dict | None = None,
+) -> SignalScore:
     """종합 시그널 스코어 계산."""
     if len(closes) < 20:
         return SignalScore()
@@ -276,6 +319,9 @@ def calc_signal_score(closes: pd.Series, volumes: pd.Series) -> SignalScore:
     # 매도 신호
     sell_score, sell_signals_list = _sell_signals(closes)
 
+    # 신용잔고 신호
+    credit_score, credit_signals = _credit_signal(credit_data)
+
     # 레짐별 전략 가중치 적용
     if regime == "BULL":
         mom_weight, mr_weight = 1.3, 0.5
@@ -286,11 +332,11 @@ def calc_signal_score(closes: pd.Series, volumes: pd.Series) -> SignalScore:
     else:  # TRANSITION, UNKNOWN
         mom_weight, mr_weight = 1.0, 1.0
 
-    # 종합 (기본 50 + 가중 적용된 매수/매도 신호 합산)
-    total = 50.0 + (mom_score * mom_weight) + (mr_score * mr_weight) + bo_score + sell_score
+    # 종합 (기본 50 + 가중 적용된 매수/매도 신호 + 신용잔고 신호)
+    total = 50.0 + (mom_score * mom_weight) + (mr_score * mr_weight) + bo_score + sell_score + credit_score
 
-    # 시그널 합의도 보너스: 4개 시그널 중 3개 이상 동일 방향이면 ±3
-    signals = [mom_score, mr_score, bo_score, sell_score]
+    # 시그널 합의도 보너스: 5개 시그널 중 3개 이상 동일 방향이면 ±3
+    signals = [mom_score, mr_score, bo_score, sell_score, credit_score]
     positive_count = sum(1 for s in signals if s > 0)
     negative_count = sum(1 for s in signals if s < 0)
     if positive_count >= 3:
@@ -299,6 +345,10 @@ def calc_signal_score(closes: pd.Series, volumes: pd.Series) -> SignalScore:
         total -= 3
 
     total = float(np.clip(total, 0, 100))
+
+    # 신용잔고 신호를 매수/매도 시그널에 분류
+    credit_buy = [s for s in credit_signals if "안전" in s or "스퀴즈" in s]
+    credit_sell = [s for s in credit_signals if "과열" in s or "주의" in s]
 
     return SignalScore(
         score=total,
@@ -310,6 +360,6 @@ def calc_signal_score(closes: pd.Series, volumes: pd.Series) -> SignalScore:
             regime=regime,
             regime_score=regime_score,
         ),
-        buy_signals=mom_signals + mr_signals + bo_signals,
-        sell_signals=sell_signals_list,
+        buy_signals=mom_signals + mr_signals + bo_signals + credit_buy,
+        sell_signals=sell_signals_list + credit_sell,
     )

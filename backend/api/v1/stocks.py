@@ -59,3 +59,16 @@ async def get_price_history(
     if not result:
         raise HTTPException(status_code=404, detail="가격 데이터를 찾을 수 없습니다")
     return result
+
+
+@router.get("/{code}/investor")
+async def get_investor_trend(
+    code: str,
+    days: int = Query(20, ge=5, le=60),
+):
+    """투자자별 매매동향 조회 API (개인/기관/외국인)."""
+    validate_stock_code(code)
+    result = await stock_service.get_investor_trend(code, days)
+    if not result:
+        raise HTTPException(status_code=404, detail="매매동향 데이터를 찾을 수 없습니다")
+    return result

@@ -87,6 +87,10 @@ const API = {
     return this.get(`/stocks/${code}/price?days=${days}`);
   },
 
+  getInvestorTrend(code, days = 20) {
+    return this.get(`/stocks/${code}/investor?days=${days}`);
+  },
+
   getRelatedCompanies(code, depth = 1, max = 10) {
     return this.get(`/related/${code}?depth=${depth}&max=${max}`, this.LONG_TIMEOUT);
   },
@@ -109,6 +113,42 @@ const API = {
 
   getGeopolitical() {
     return this.get('/geopolitical', this.LONG_TIMEOUT);
+  },
+
+  async _post(url, body, timeout = null) {
+    const reqTimeout = timeout || this.TIMEOUT;
+    if (!navigator.onLine) {
+      Toast.show('네트워크 연결을 확인해주세요', 'error');
+      throw new Error('오프라인 상태');
+    }
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), reqTimeout);
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        signal: controller.signal,
+        headers: { ...this._getHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      clearTimeout(timer);
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: res.statusText }));
+        throw new Error(err.detail || '요청 실패');
+      }
+      return res.json();
+    } catch (e) {
+      clearTimeout(timer);
+      if (e.name === 'AbortError') throw new Error('요청 시간 초과');
+      throw e;
+    }
+  },
+
+  post(endpoint, body, timeout = null) {
+    return this._post(`${this.BASE}${endpoint}`, body, timeout);
+  },
+
+  analyzePortfolio(holdings) {
+    return this.post('/portfolio/analyze', { holdings }, 120000);
   },
 };
 

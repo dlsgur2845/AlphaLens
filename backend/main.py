@@ -13,7 +13,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import PlainTextResponse, Response
 
-from backend.api.v1 import stocks, news, scoring, related, recommendations, geopolitical, backtest, ws
+from backend.api.v1 import stocks, news, scoring, related, recommendations, geopolitical, backtest, ws, portfolio
 from backend.config import settings
 from backend.services import http_client
 from backend.utils.auth import create_access_token
@@ -131,6 +131,7 @@ class RequestTimeoutMiddleware(BaseHTTPMiddleware):
         ("/api/v1/scoring", 60),
         ("/api/v1/related", 60),
         ("/api/v1/backtest", 90),
+        ("/api/v1/portfolio", 120),
     ]
 
     async def dispatch(self, request: Request, call_next):
@@ -387,6 +388,7 @@ app.include_router(related.router, prefix="/api/v1/related", tags=["related"])
 app.include_router(recommendations.router, prefix="/api/v1/recommendations", tags=["recommendations"])
 app.include_router(geopolitical.router, prefix="/api/v1/geopolitical", tags=["geopolitical"])
 app.include_router(backtest.router, prefix="/api/v1/backtest", tags=["backtest"])
+app.include_router(portfolio.router, prefix="/api/v1/portfolio", tags=["portfolio"])
 app.include_router(ws.router, prefix="/api/v1", tags=["websocket"])
 
 app.mount("/", StaticFiles(directory="frontend", html=True), name="frontend")

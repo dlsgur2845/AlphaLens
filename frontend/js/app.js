@@ -102,6 +102,7 @@ const App = {
     this._initChartControls();
     this._initKeyboardShortcuts();
     this._initCompareMode();
+    Portfolio.init();
     this._initNavigation();
 
     // 로고 클릭 → 홈 복귀
@@ -248,6 +249,11 @@ const App = {
             break;
           case 'recommend':
             this._showSingleSection('recommendSection', 'avoidSection');
+            break;
+          case 'portfolio':
+            this._showSingleSection('portfolioSection');
+            Portfolio.renderHoldings();
+            Portfolio.loadAnalysis();
             break;
           case 'compare':
             this._showSingleSection('compareSection');
@@ -481,6 +487,10 @@ const App = {
       this.renderRelated(data);
       SectionProgress.complete('related');
     })).catch((e) => { console.error('Related error:', e); SectionProgress.error('related'); });
+
+    API.getInvestorTrend(code).then((data) => guard(() => {
+      this.renderInvestorTrend(data);
+    })).catch((e) => { console.warn('Investor trend error:', e.message); });
 
     // 개별종목 자동 갱신 (2분) - 주가/스코어링만 갱신 (부하 최소화)
     this._stockRefreshInterval = setInterval(() => {
@@ -731,6 +741,50 @@ const App = {
       }).join('');
     } else {
       triggersEl.innerHTML = '<span class="geo-empty">트리거 없음</span>';
+    }
+
+    // 시간축별 리스크
+    const horizonSection = document.getElementById('geoHorizonSection');
+    const horizonGrid = document.getElementById('geoHorizonGrid');
+    const horizons = data.horizon_risks || {};
+    const horizonOrder = ['short', 'mid', 'long'];
+    const horizonIcons = { short: '⚡', mid: '📊', long: '🏗️' };
+
+    if (Object.keys(horizons).length > 0) {
+      horizonSection.style.display = '';
+      horizonGrid.innerHTML = horizonOrder.map((key) => {
+        const h = horizons[key];
+        if (!h) return '';
+        const hScore = Number(h.score) || 0;
+        const hColor = hScore >= 70 ? 'var(--red)' : hScore >= 50 ? '#fb923c' : hScore >= 30 ? 'var(--yellow)' : 'var(--green)';
+        const hClass = hScore >= 70 ? 'danger' : hScore >= 50 ? 'alert' : hScore >= 30 ? 'caution' : 'safe';
+
+        const eventsHtml = (h.key_events || []).map((ev) => {
+          const sev = safeSeverity(ev.severity);
+          const roleTag = ev.role === 'secondary' ? ' <span class="geo-hz-secondary">간접</span>' : '';
+          return `<span class="geo-hz-event ${sev}">${escapeHTML(ev.icon || '')} ${escapeHTML(ev.label || '')}${roleTag}</span>`;
+        }).join('');
+
+        return `<div class="geo-horizon-card ${hClass}">
+          <div class="geo-hz-header">
+            <span class="geo-hz-icon">${horizonIcons[key]}</span>
+            <span class="geo-hz-title">${escapeHTML(h.horizon_label || '')}</span>
+            <span class="geo-hz-period">${escapeHTML(h.period || '')}</span>
+          </div>
+          <div class="geo-hz-score-row">
+            <span class="geo-hz-score" style="color:${hColor}">${hScore.toFixed(0)}</span>
+            <span class="geo-hz-label ${hClass}">${escapeHTML(h.label || '')}</span>
+          </div>
+          <div class="geo-hz-bar">
+            <div class="geo-hz-bar-fill" style="width:${Math.min(hScore, 100)}%;background:${hColor}"></div>
+          </div>
+          <div class="geo-hz-desc">${escapeHTML(h.description || '')}</div>
+          ${eventsHtml ? `<div class="geo-hz-events">${eventsHtml}</div>` : ''}
+          <div class="geo-hz-guidance">${escapeHTML(h.guidance || '')}</div>
+        </div>`;
+      }).join('');
+    } else {
+      horizonSection.style.display = 'none';
     }
 
     // 업데이트 시간
@@ -1268,10 +1322,24 @@ const App = {
       riskHTML += this._tipRow('MDD', risk.breakdown.mdd != null ? risk.breakdown.mdd.toFixed(1) : '-');
       riskHTML += this._tipRow('VaR/CVaR', risk.breakdown.var_cvar != null ? risk.breakdown.var_cvar.toFixed(1) : '-');
       riskHTML += this._tipRow('유동성', risk.breakdown.liquidity != null ? risk.breakdown.liquidity.toFixed(1) : '-');
+      if (risk.breakdown.leverage != null && risk.breakdown.leverage !== 50) {
+        riskHTML += this._tipRow('레버리지', risk.breakdown.leverage.toFixed(1),
+          risk.breakdown.leverage >= 70 ? 'positive' : risk.breakdown.leverage <= 30 ? 'negative' : '');
+      }
     }
     if (risk.position_size_pct) riskHTML += this._tipRow('추천 비중', risk.position_size_pct.toFixed(1) + '%');
     if (risk.atr) riskHTML += this._tipRow('ATR', risk.atr.toFixed(0) + '원');
     const riskEl = document.getElementById('tooltipRisk');
+    // 신용잔고 데이터 표시
+    const credit = details.credit || {};
+    if (credit.credit_ratio != null) {
+      riskHTML += '<div class="tip-divider"></div>';
+      riskHTML += this._tipRow('신용비율', credit.credit_ratio.toFixed(2) + '%',
+        credit.credit_ratio > 5 ? 'negative' : credit.credit_ratio < 2 ? 'positive' : '');
+      if (credit.short_ratio) {
+        riskHTML += this._tipRow('공매도비율', credit.short_ratio.toFixed(2) + '%');
+      }
+    }
     if (riskEl) riskEl.innerHTML = riskHTML;
 
     // 뉴스 감성 툴팁
@@ -1390,6 +1458,143 @@ const App = {
     });
   },
 
+  _investorChart: null,
+
+  renderInvestorTrend(data) {
+    const section = document.getElementById('investorSection');
+    if (!data || !Array.isArray(data) || data.length === 0) {
+      section.style.display = 'none';
+      return;
+    }
+    section.style.display = '';
+
+    // 최신순 → 오래된순으로 정렬 (차트용)
+    const sorted = [...data].reverse();
+    const latest = data[0];
+
+    // 기간 표시
+    document.getElementById('investorPeriod').textContent =
+      `${sorted[0].date} ~ ${sorted[sorted.length - 1].date} (${sorted.length}일)`;
+
+    // 요약 카드: 최근 5일 누적
+    const recent5 = data.slice(0, Math.min(5, data.length));
+    const sum5 = { foreign: 0, institution: 0, individual: 0 };
+    recent5.forEach((d) => {
+      sum5.foreign += d.foreign;
+      sum5.institution += d.institution;
+      sum5.individual += d.individual;
+    });
+
+    const fmtQty = (v) => {
+      const abs = Math.abs(v);
+      const sign = v > 0 ? '+' : v < 0 ? '-' : '';
+      if (abs >= 1000000) return `${sign}${(abs / 1000000).toFixed(1)}백만`;
+      if (abs >= 10000) return `${sign}${(abs / 10000).toFixed(1)}만`;
+      return `${sign}${abs.toLocaleString()}`;
+    };
+    const cls = (v) => v > 0 ? 'up' : v < 0 ? 'down' : '';
+
+    document.getElementById('investorSummary').innerHTML = `
+      <div class="investor-summary-grid">
+        <div class="investor-stat">
+          <span class="investor-stat-label">외국인 (5일)</span>
+          <span class="investor-stat-value ${cls(sum5.foreign)}">${fmtQty(sum5.foreign)}주</span>
+        </div>
+        <div class="investor-stat">
+          <span class="investor-stat-label">기관 (5일)</span>
+          <span class="investor-stat-value ${cls(sum5.institution)}">${fmtQty(sum5.institution)}주</span>
+        </div>
+        <div class="investor-stat">
+          <span class="investor-stat-label">개인 (5일)</span>
+          <span class="investor-stat-value ${cls(sum5.individual)}">${fmtQty(sum5.individual)}주</span>
+        </div>
+        <div class="investor-stat">
+          <span class="investor-stat-label">외국인 보유</span>
+          <span class="investor-stat-value">${latest.foreign_hold_ratio.toFixed(2)}%</span>
+        </div>
+      </div>`;
+
+    // 차트
+    const ctx = document.getElementById('investorChart').getContext('2d');
+    if (this._investorChart) this._investorChart.destroy();
+
+    this._investorChart = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: sorted.map((d) => d.date.slice(5)),
+        datasets: [
+          {
+            label: '외국인',
+            data: sorted.map((d) => d.foreign),
+            backgroundColor: sorted.map((d) => d.foreign >= 0 ? 'rgba(59,130,246,.7)' : 'rgba(59,130,246,.3)'),
+            borderColor: 'rgb(59,130,246)',
+            borderWidth: 1,
+          },
+          {
+            label: '기관',
+            data: sorted.map((d) => d.institution),
+            backgroundColor: sorted.map((d) => d.institution >= 0 ? 'rgba(168,85,247,.7)' : 'rgba(168,85,247,.3)'),
+            borderColor: 'rgb(168,85,247)',
+            borderWidth: 1,
+          },
+          {
+            label: '개인',
+            data: sorted.map((d) => d.individual),
+            backgroundColor: sorted.map((d) => d.individual >= 0 ? 'rgba(34,197,94,.7)' : 'rgba(34,197,94,.3)'),
+            borderColor: 'rgb(34,197,94)',
+            borderWidth: 1,
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: {
+            labels: { color: '#94a3b8', font: { size: 11 } },
+          },
+          tooltip: {
+            callbacks: {
+              label: (ctx) => `${ctx.dataset.label}: ${ctx.parsed.y >= 0 ? '+' : ''}${ctx.parsed.y.toLocaleString()}주`,
+            },
+          },
+        },
+        scales: {
+          x: {
+            ticks: { color: '#64748b', font: { size: 10 } },
+            grid: { color: 'rgba(100,116,139,.15)' },
+          },
+          y: {
+            ticks: {
+              color: '#64748b',
+              font: { size: 10 },
+              callback: (v) => {
+                const abs = Math.abs(v);
+                if (abs >= 1000000) return (v / 1000000).toFixed(0) + 'M';
+                if (abs >= 1000) return (v / 1000).toFixed(0) + 'K';
+                return v;
+              },
+            },
+            grid: { color: 'rgba(100,116,139,.15)' },
+          },
+        },
+      },
+    });
+
+    // 테이블
+    const tbody = document.getElementById('investorTableBody');
+    tbody.innerHTML = data.slice(0, 10).map((d) => `
+      <tr>
+        <td>${d.date.slice(5)}</td>
+        <td class="${cls(d.foreign)}">${fmtQty(d.foreign)}</td>
+        <td class="${cls(d.institution)}">${fmtQty(d.institution)}</td>
+        <td class="${cls(d.individual)}">${fmtQty(d.individual)}</td>
+        <td>${d.foreign_hold_ratio.toFixed(2)}%</td>
+      </tr>
+    `).join('');
+  },
+
   async loadChart(code, days) {
     try {
       const data = await API.getPriceHistory(code, days);
@@ -1439,6 +1644,332 @@ const SystemMonitor = {
     const memFill = memBar?.querySelector('.monitor-bar-fill');
     if (cpuFill) cpuFill.style.width = cpu + '%';
     if (memFill) memFill.style.width = mem + '%';
+  },
+};
+
+/* ── 포트폴리오 관리 ── */
+const Portfolio = {
+  _selectedCode: null,
+  _selectedName: null,
+  _analyzing: false,
+
+  init() {
+    const searchInput = document.getElementById('portfolioSearchInput');
+    const dropdown = document.getElementById('portfolioSearchDropdown');
+    const qtyInput = document.getElementById('portfolioQty');
+    const priceInput = document.getElementById('portfolioAvgPrice');
+    const addBtn = document.getElementById('portfolioAddBtn');
+    const refreshBtn = document.getElementById('portfolioRefreshBtn');
+    const infoEl = document.getElementById('portfolioAddInfo');
+
+    if (!searchInput) return;
+
+    let timer = null;
+    searchInput.addEventListener('input', () => {
+      clearTimeout(timer);
+      this._selectedCode = null;
+      this._selectedName = null;
+      addBtn.disabled = true;
+      infoEl.textContent = '';
+      const q = searchInput.value.trim();
+      if (q.length === 0) { dropdown.classList.remove('active'); return; }
+      timer = setTimeout(async () => {
+        try {
+          const results = await API.searchStocks(q);
+          dropdown.innerHTML = results.map((s) => `
+            <div class="search-item" data-code="${s.code}" data-name="${escapeHTML(s.name)}">
+              <div><span class="search-item-name">${escapeHTML(s.name)}</span>
+              <span class="search-item-code">${s.code}</span></div>
+              <span class="search-item-market">${escapeHTML(s.market)}</span>
+            </div>
+          `).join('');
+          dropdown.classList.add('active');
+          dropdown.querySelectorAll('.search-item').forEach((item) => {
+            item.addEventListener('click', () => {
+              this._selectedCode = item.dataset.code;
+              this._selectedName = item.dataset.name;
+              searchInput.value = item.dataset.name;
+              dropdown.classList.remove('active');
+              infoEl.textContent = `${item.dataset.name} (${item.dataset.code})`;
+              this._updateAddBtn();
+            });
+          });
+        } catch (e) { /* ignore */ }
+      }, 300);
+    });
+
+    document.addEventListener('click', (e) => {
+      if (!e.target.closest('.portfolio-search-wrap')) dropdown.classList.remove('active');
+    });
+
+    qtyInput.addEventListener('input', () => this._updateAddBtn());
+    priceInput.addEventListener('input', () => this._updateAddBtn());
+
+    addBtn.addEventListener('click', () => {
+      if (!this._selectedCode) return;
+      const qty = parseInt(qtyInput.value, 10);
+      const price = parseInt(priceInput.value, 10);
+      if (!qty || qty <= 0 || !price || price <= 0) return;
+
+      Storage.addPortfolioHolding({
+        code: this._selectedCode,
+        name: this._selectedName || this._selectedCode,
+        quantity: qty,
+        avg_price: price,
+      });
+
+      // 폼 초기화
+      searchInput.value = '';
+      qtyInput.value = '';
+      priceInput.value = '';
+      this._selectedCode = null;
+      this._selectedName = null;
+      addBtn.disabled = true;
+      infoEl.textContent = '';
+
+      Toast.show('종목이 추가되었습니다', 'success');
+      this.renderHoldings();
+      this.loadAnalysis();
+    });
+
+    refreshBtn.addEventListener('click', () => {
+      this.loadAnalysis();
+    });
+
+    this.renderHoldings();
+  },
+
+  _updateAddBtn() {
+    const addBtn = document.getElementById('portfolioAddBtn');
+    const qty = parseInt(document.getElementById('portfolioQty').value, 10);
+    const price = parseInt(document.getElementById('portfolioAvgPrice').value, 10);
+    addBtn.disabled = !(this._selectedCode && qty > 0 && price > 0);
+  },
+
+  renderHoldings() {
+    const holdings = Storage.getPortfolio();
+    const container = document.getElementById('portfolioHoldings');
+    const summary = document.getElementById('portfolioSummary');
+
+    if (holdings.length === 0) {
+      container.innerHTML = `
+        <div class="portfolio-empty">
+          <p>보유 종목이 없습니다</p>
+          <p class="portfolio-empty-sub">위 검색창에서 종목을 추가하세요</p>
+        </div>`;
+      summary.style.display = 'none';
+      return;
+    }
+
+    summary.style.display = '';
+
+    // 로컬 데이터로 투자금 즉시 표시 (API 응답 전)
+    const localInvested = holdings.reduce((sum, h) => sum + h.quantity * h.avg_price, 0);
+    document.getElementById('pfTotalInvested').textContent = localInvested.toLocaleString() + '원';
+    document.getElementById('pfTotalValue').textContent = '분석 중...';
+    document.getElementById('pfTotalPnl').textContent = '-';
+    document.getElementById('pfTotalPnl').className = 'portfolio-stat-value';
+    document.getElementById('pfTotalPnlPct').textContent = '-';
+    document.getElementById('pfTotalPnlPct').className = 'portfolio-stat-value';
+    document.getElementById('pfAvgScore').textContent = '-';
+    document.getElementById('pfDirection').textContent = '-';
+
+    // 로컬 데이터만으로 기본 렌더링 (분석 전)
+    container.innerHTML = holdings.map((h) => `
+      <div class="portfolio-card" data-code="${h.code}">
+        <div class="portfolio-card-header">
+          <div>
+            <span class="portfolio-card-name">${escapeHTML(h.name)}</span>
+            <span class="portfolio-card-code">${h.code}</span>
+          </div>
+          <div class="portfolio-card-actions">
+            <button class="portfolio-edit-btn" data-code="${h.code}" title="수정">수정</button>
+            <button class="portfolio-remove-btn" data-code="${h.code}" title="삭제">삭제</button>
+          </div>
+        </div>
+        <div class="portfolio-card-body">
+          <div class="portfolio-card-row">
+            <span>보유 수량</span><span>${h.quantity.toLocaleString()}주</span>
+          </div>
+          <div class="portfolio-card-row">
+            <span>평균단가</span><span>${h.avg_price.toLocaleString()}원</span>
+          </div>
+          <div class="portfolio-card-row">
+            <span>투자금</span><span>${(h.quantity * h.avg_price).toLocaleString()}원</span>
+          </div>
+          <div class="portfolio-card-analysis" id="pfAnalysis_${h.code}">
+            <div class="skeleton-block" style="height:60px"></div>
+          </div>
+        </div>
+      </div>
+    `).join('');
+
+    // 삭제 버튼
+    container.querySelectorAll('.portfolio-remove-btn').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const code = btn.dataset.code;
+        Storage.removePortfolioHolding(code);
+        Toast.show('종목이 삭제되었습니다', 'info');
+        this.renderHoldings();
+        this.loadAnalysis();
+      });
+    });
+
+    // 수정 버튼
+    container.querySelectorAll('.portfolio-edit-btn').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const code = btn.dataset.code;
+        const holding = Storage.getPortfolio().find((h) => h.code === code);
+        if (!holding) return;
+        const newQty = prompt('수량 입력:', holding.quantity);
+        if (newQty === null) return;
+        const newPrice = prompt('평균단가 입력:', holding.avg_price);
+        if (newPrice === null) return;
+        const q = parseInt(newQty, 10);
+        const p = parseInt(newPrice, 10);
+        if (q > 0 && p > 0) {
+          Storage.updatePortfolioHolding(code, { quantity: q, avg_price: p });
+          Toast.show('수정되었습니다', 'success');
+          this.renderHoldings();
+          this.loadAnalysis();
+        }
+      });
+    });
+
+    // 카드 클릭 → 종목 상세 이동
+    container.querySelectorAll('.portfolio-card').forEach((card) => {
+      card.addEventListener('click', (e) => {
+        if (e.target.closest('button')) return;
+        App.loadStock(card.dataset.code);
+      });
+    });
+  },
+
+  async loadAnalysis() {
+    const holdings = Storage.getPortfolio();
+    if (holdings.length === 0) return;
+    if (this._analyzing) return;
+    this._analyzing = true;
+
+    SectionProgress.start('#portfolioSection', 'portfolio');
+
+    try {
+      const apiHoldings = holdings.map((h) => ({
+        code: h.code,
+        quantity: h.quantity,
+        avg_price: h.avg_price,
+      }));
+      const result = await API.analyzePortfolio(apiHoldings);
+      this._renderAnalysisResult(result);
+      SectionProgress.complete('portfolio');
+    } catch (e) {
+      console.error('포트폴리오 분석 실패:', e);
+      Toast.show('포트폴리오 분석 실패: ' + e.message, 'error');
+      SectionProgress.error('portfolio');
+    } finally {
+      this._analyzing = false;
+    }
+  },
+
+  _renderAnalysisResult(result) {
+    const s = result.summary;
+
+    // 요약 카드
+    const pnlClass = s.total_pnl >= 0 ? 'up' : 'down';
+    document.getElementById('pfTotalInvested').textContent = s.total_invested.toLocaleString() + '원';
+    document.getElementById('pfTotalValue').textContent = s.total_value.toLocaleString() + '원';
+
+    const pnlEl = document.getElementById('pfTotalPnl');
+    pnlEl.textContent = (s.total_pnl >= 0 ? '+' : '') + s.total_pnl.toLocaleString() + '원';
+    pnlEl.className = 'portfolio-stat-value ' + pnlClass;
+
+    const pctEl = document.getElementById('pfTotalPnlPct');
+    pctEl.textContent = (s.total_pnl_pct >= 0 ? '▲ +' : '▼ ') + s.total_pnl_pct.toFixed(2) + '%';
+    pctEl.className = 'portfolio-stat-value ' + pnlClass;
+
+    const scoreEl = document.getElementById('pfAvgScore');
+    scoreEl.textContent = s.avg_score.toFixed(1) + '점';
+    scoreEl.style.color = s.avg_score >= 60 ? 'var(--green)' : s.avg_score <= 40 ? 'var(--red)' : 'var(--yellow)';
+
+    document.getElementById('pfDirection').textContent = s.overall_strategy.direction;
+
+    // 전체 전략 상세
+    const stratEl = document.getElementById('pfOverallStrategy');
+    stratEl.style.display = '';
+    let stratHTML = `<div class="pf-strategy-desc">${escapeHTML(s.overall_strategy.direction_detail)}</div>`;
+    if (s.overall_strategy.tactics.length > 0) {
+      stratHTML += '<div class="pf-strategy-section"><strong>전략</strong><ul>';
+      s.overall_strategy.tactics.forEach((t) => { stratHTML += `<li>${escapeHTML(t)}</li>`; });
+      stratHTML += '</ul></div>';
+    }
+    if (s.overall_strategy.cautions.length > 0) {
+      stratHTML += '<div class="pf-strategy-section pf-caution"><strong>주의사항</strong><ul>';
+      s.overall_strategy.cautions.forEach((c) => { stratHTML += `<li>${escapeHTML(c)}</li>`; });
+      stratHTML += '</ul></div>';
+    }
+    stratEl.innerHTML = stratHTML;
+
+    // 종목별 분석 결과
+    (result.holdings || []).forEach((h) => {
+      const el = document.getElementById(`pfAnalysis_${h.code}`);
+      if (!el) return;
+
+      const pClass = h.pnl >= 0 ? 'up' : 'down';
+      const scoreColor = h.total_score != null
+        ? (h.total_score >= 65 ? 'var(--green)' : h.total_score <= 35 ? 'var(--red)' : 'var(--yellow)')
+        : 'var(--text-muted)';
+
+      const actionClass = {
+        '추가매수': 'pf-action-buy',
+        '보유': 'pf-action-hold',
+        '관망': 'pf-action-hold',
+        '부분매도': 'pf-action-partial',
+        '매도': 'pf-action-sell',
+        '조건부매도': 'pf-action-sell',
+      }[h.strategy.action] || 'pf-action-hold';
+
+      let html = `
+        <div class="pf-analysis-grid">
+          <div class="pf-analysis-item">
+            <span>현재가</span><span>${h.current_price.toLocaleString()}원</span>
+          </div>
+          <div class="pf-analysis-item">
+            <span>평가금</span><span>${h.current_value.toLocaleString()}원</span>
+          </div>
+          <div class="pf-analysis-item">
+            <span>수익</span><span class="${pClass}">${h.pnl >= 0 ? '+' : ''}${h.pnl.toLocaleString()}원</span>
+          </div>
+          <div class="pf-analysis-item">
+            <span>수익률</span><span class="${pClass}">${h.pnl_pct >= 0 ? '▲ +' : '▼ '}${h.pnl_pct.toFixed(2)}%</span>
+          </div>
+          <div class="pf-analysis-item">
+            <span>종합점수</span><span style="color:${scoreColor}">${h.total_score != null ? h.total_score.toFixed(1) : '-'}</span>
+          </div>
+          <div class="pf-analysis-item">
+            <span>리스크</span><span>${h.risk_grade}</span>
+          </div>
+        </div>
+        <div class="pf-strategy-badge ${actionClass}">${escapeHTML(h.strategy.action)}</div>
+        <div class="pf-strategy-detail">${escapeHTML(h.strategy.action_detail)}</div>
+      `;
+
+      if (h.strategy.tactics && h.strategy.tactics.length > 0) {
+        html += '<ul class="pf-tactics">';
+        h.strategy.tactics.forEach((t) => { html += `<li>${escapeHTML(t)}</li>`; });
+        html += '</ul>';
+      }
+
+      if (h.strategy.target_price || h.strategy.stop_loss) {
+        html += '<div class="pf-price-targets">';
+        if (h.strategy.target_price) html += `<span class="pf-target">목표 ${h.strategy.target_price.toLocaleString()}원</span>`;
+        if (h.strategy.stop_loss) html += `<span class="pf-stop">손절 ${h.strategy.stop_loss.toLocaleString()}원</span>`;
+        html += '</div>';
+      }
+
+      el.innerHTML = html;
+    });
   },
 };
 
