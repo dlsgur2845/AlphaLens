@@ -1,4 +1,21 @@
 services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: alphalens
+      POSTGRES_USER: alphalens
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-alphalens_secret}
+    volumes:
+      - ./.docker-data/pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U alphalens"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   alphalens:
     build: .
     container_name: alphalens
@@ -10,9 +27,13 @@ services:
       - HOST=0.0.0.0
       - PORT=8000
       - TZ=Asia/Seoul
+      - DATABASE_URL=postgresql+asyncpg://alphalens:${POSTGRES_PASSWORD:-alphalens_secret}@postgres:5432/alphalens
     volumes:
-      - hf-cache:/app/.hf_cache
+      - ./.docker-data/hf-cache:/app/.hf_cache
     restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
     stop_grace_period: 30s
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health')"]
@@ -20,6 +41,3 @@ services:
       timeout: 5s
       start_period: 10s
       retries: 3
-
-volumes:
-  hf-cache:

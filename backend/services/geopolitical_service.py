@@ -18,8 +18,8 @@ from backend.services.http_client import get_mobile_client
 
 logger = logging.getLogger(__name__)
 
-_CACHE_TTL = 300  # 5분
-_CRISIS_CACHE_TTL = 120  # 위기 시 2분
+_CACHE_TTL = 600  # 10분
+_CRISIS_CACHE_TTL = 180  # 위기 시 3분
 _TAG_RE = re.compile(r"<[^>]+>")
 _PREFIX_RE = re.compile(r"^\[(속보|단독|종합|긴급|1보|2보|3보)\]\s*")
 
@@ -318,7 +318,7 @@ _fetch_semaphore: asyncio.Semaphore | None = None
 def _get_semaphore() -> asyncio.Semaphore:
     global _fetch_semaphore
     if _fetch_semaphore is None:
-        _fetch_semaphore = asyncio.Semaphore(3)
+        _fetch_semaphore = asyncio.Semaphore(2)
     return _fetch_semaphore
 
 
@@ -365,8 +365,8 @@ async def _fetch_news_google_rss(
                     articles.append({"title": title, "body": desc, "lang": lang})
                 if len(articles) >= max_articles:
                     break
-        elif resp.status_code == 503:
-            logger.debug("Google News RSS 503 for query=%s", query)
+        elif resp.status_code in (429, 503):
+            logger.debug("Google News RSS %d for query=%s", resp.status_code, query)
     except Exception as exc:
         logger.debug("Google News RSS failed for query=%s: %s", query, type(exc).__name__)
 
@@ -1082,33 +1082,39 @@ async def _build_geopolitical_analysis() -> dict:
     """지정학 리스크 종합 분석 (내부 구현)."""
     cache_key = "geopolitical:analysis"
 
-    # 핵심 키워드 그룹별 뉴스 병렬 수집
+    # 핵심 키워드 그룹별 뉴스 수집 (그룹 통합으로 요청 수 최소화)
     keyword_groups_ko = [
-        ["전쟁", "공습", "미사일", "이란 핵"],
+        ["전쟁", "공습", "미사일", "북한 도발", "한반도"],
         ["관세", "무역전쟁", "트럼프 관세", "수출규제"],
-        ["금리", "연준", "FOMC", "통화정책"],
-        ["유가", "원유", "OPEC", "에너지위기"],
-        ["중국경제", "부동산위기", "위안화"],
-        ["반도체", "AI칩", "HBM", "수출규제"],
+        ["금리", "연준", "FOMC", "유가", "원유", "OPEC"],
+        ["중국경제", "위안화", "반도체", "AI칩", "HBM"],
         ["환율", "원달러", "원화약세", "외국인매도"],
-        ["북한", "미사일", "도발", "한반도"],
-        ["공급망", "디커플링", "리쇼어링"],
+        ["공급망", "디커플링", "에너지위기"],
+    ]
+    keyword_groups_en = [
+        ["war", "airstrike", "missile strike", "North Korea"],
+        ["tariff", "trade war", "Trump tariff", "export ban"],
+        ["Fed rate", "FOMC", "oil price", "crude oil", "OPEC"],
+        ["China economy", "semiconductor", "AI chip", "chip ban"],
+        ["dollar index", "USD KRW", "currency crisis"],
+        ["supply chain", "decoupling", "energy crisis"],
     ]
 
     sem = _get_semaphore()
 
     async def _fetch_limited(coro):
         async with sem:
+            await asyncio.sleep(0.3)  # Google RSS rate limit 방지
             return await coro
 
-    # 한국어 RSS + 영문 RSS 병렬 수집
+    # 한국어 RSS + 영문 RSS + 네이버 병렬 수집 (총 13개 요청)
     tasks = [
-        _fetch_limited(_fetch_news_google_rss(group, max_articles=8, lang="ko"))
+        _fetch_limited(_fetch_news_google_rss(group, max_articles=10, lang="ko"))
         for group in keyword_groups_ko
     ]
     tasks.extend([
-        _fetch_limited(_fetch_news_google_rss(group, max_articles=5, lang="en"))
-        for group in KEYWORD_GROUPS_EN
+        _fetch_limited(_fetch_news_google_rss(group, max_articles=8, lang="en"))
+        for group in keyword_groups_en
     ])
     tasks.append(_fetch_limited(_fetch_news_naver_finance(max_articles=15)))
 
