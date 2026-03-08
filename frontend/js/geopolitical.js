@@ -195,8 +195,8 @@ const Geopolitical = {
     if (data.updated_at) {
       const t = new Date(data.updated_at);
       const articlesCount = Number(data.articles_analyzed) || 0;
-      document.getElementById('geoUpdateTime').textContent =
-        `${t.toLocaleTimeString('ko', { hour: '2-digit', minute: '2-digit' })} 기준 · ${articlesCount}건 분석`;
+      document.getElementById('geoUpdateTime').innerHTML =
+        `${t.toLocaleTimeString('ko', { hour: '2-digit', minute: '2-digit' })} 기준 · ${articlesCount}건 분석 ${formatCacheStatus(data)}`;
     }
   },
 };

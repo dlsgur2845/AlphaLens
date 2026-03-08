@@ -81,8 +81,10 @@ async def _fetch_index_price(index_code: str) -> dict | None:
 async def _build_market_summary() -> dict:
     """시장 요약 데이터 생성 (매크로 점수 + 지수 + 섹터 전망)."""
     cache_key = "market_summary:latest"
-    cached = cache.get(cache_key)
+    cached, cache_age = cache.get_with_age(cache_key)
     if cached is not None:
+        cached["_cached"] = True
+        cached["_cache_age"] = cache_age
         return cached
 
     # 매크로 점수 + KOSPI/KOSDAQ 지수 병렬 조회
@@ -120,6 +122,7 @@ async def _build_market_summary() -> dict:
     }
 
     cache.set(cache_key, summary, ttl=300)  # 5분 캐시
+    summary["_cached"] = False
     return summary
 
 
@@ -192,19 +195,24 @@ async def _build_recommendations(top_n: int = 5) -> dict:
 async def _get_or_refresh_recommendations(top_n: int = 5) -> dict:
     """캐시된 추천 결과 반환. 만료 시 갱신."""
     cache_key = f"{_CACHE_KEY_PREFIX}:top_{top_n}"
-    cached = cache.get(cache_key)
+    cached, cache_age = cache.get_with_age(cache_key)
     if cached is not None:
+        cached["_cached"] = True
+        cached["_cache_age"] = cache_age
         return cached
 
     # 캐시 미스 - 락을 잡고 갱신 (중복 방지)
     async with _refresh_lock:
         # 더블 체크
-        cached = cache.get(cache_key)
+        cached, cache_age = cache.get_with_age(cache_key)
         if cached is not None:
+            cached["_cached"] = True
+            cached["_cache_age"] = cache_age
             return cached
 
         result = await _build_recommendations(top_n)
         cache.set(cache_key, result, ttl=_CACHE_TTL)
+        result["_cached"] = False
         return result
 
 
@@ -213,7 +221,12 @@ async def get_market_summary():
     """시장 요약 API (매크로 + 지수). 추천 스코어링과 독립적으로 빠르게 반환."""
     try:
         summary = await _build_market_summary()
-        return {"market_summary": summary, "updated_at": datetime.now().isoformat()}
+        return {
+            "market_summary": summary,
+            "updated_at": datetime.now().isoformat(),
+            "_cached": summary.get("_cached", False),
+            "_cache_age": summary.get("_cache_age"),
+        }
     except Exception:
         logger.exception("시장 요약 생성 실패")
         raise HTTPException(status_code=500, detail="시장 요약 데이터를 불러올 수 없습니다")

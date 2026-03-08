@@ -162,8 +162,8 @@ const Market = {
     // 업데이트 시간
     if (ms.updated_at) {
       const t = new Date(ms.updated_at);
-      document.getElementById('marketSummaryTime').textContent =
-        `${t.toLocaleTimeString('ko', { hour: '2-digit', minute: '2-digit' })} 기준`;
+      document.getElementById('marketSummaryTime').innerHTML =
+        `${t.toLocaleTimeString('ko', { hour: '2-digit', minute: '2-digit' })} 기준 ${formatCacheStatus(ms)}`;
     }
   },
 };
@@ -205,8 +205,8 @@ const Recommend = {
 
       if (data.updated_at) {
         const t = new Date(data.updated_at);
-        document.getElementById('recommendUpdateTime').textContent =
-          `${t.toLocaleTimeString('ko', { hour: '2-digit', minute: '2-digit' })} 기준`;
+        document.getElementById('recommendUpdateTime').innerHTML =
+          `${t.toLocaleTimeString('ko', { hour: '2-digit', minute: '2-digit' })} 기준 ${formatCacheStatus(data)}`;
       }
       SectionProgress.complete('recommend');
     } catch (e) {

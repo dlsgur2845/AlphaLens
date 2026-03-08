@@ -23,6 +23,18 @@ class CacheService:
             return None
         return value
 
+    def get_with_age(self, key: str) -> tuple[Any | None, float | None]:
+        """캐시 값과 경과 시간(초)을 반환. 미스 시 (None, None)."""
+        entry = self._store.get(key)
+        if entry is None:
+            return None, None
+        value, expires_at, created_at = entry
+        now = time.time()
+        if now > expires_at:
+            del self._store[key]
+            return None, None
+        return value, round(now - created_at, 1)
+
     def set(self, key: str, value: Any, ttl: int = 300) -> None:
         now = time.time()
         self._store[key] = (value, now + ttl, now)

@@ -14,6 +14,15 @@ function formatChange(value, suffix = '%') {
   return `- 0.00${suffix}`;
 }
 
+/* ── 캐시 상태 표시 헬퍼 ── */
+function formatCacheStatus(data) {
+  if (!data || data._cached == null) return '';
+  if (!data._cached) return '<span class="cache-badge fresh">실시간</span>';
+  const age = data._cache_age || 0;
+  const label = age < 60 ? `${Math.round(age)}초 전` : `${Math.round(age / 60)}분 전`;
+  return `<span class="cache-badge cached">캐시 · ${label}</span>`;
+}
+
 /* ── 토스트 시스템 ── */
 const Toast = {
   show(message, type = 'info', duration = 3000) {

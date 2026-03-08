@@ -1051,8 +1051,10 @@ def _score_to_severity(score: float) -> str:
 async def get_geopolitical_analysis() -> dict:
     """지정학 리스크 종합 분석 수행."""
     cache_key = "geopolitical:analysis"
-    cached = cache.get(cache_key)
+    cached, cache_age = cache.get_with_age(cache_key)
     if cached is not None:
+        cached["_cached"] = True
+        cached["_cache_age"] = cache_age
         return cached
 
     try:
@@ -1217,6 +1219,7 @@ async def _build_geopolitical_analysis() -> dict:
         )
         cache.set(cache_key, result, ttl=ttl)
 
+    result["_cached"] = False
     return result
 
 
