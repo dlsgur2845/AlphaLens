@@ -159,11 +159,12 @@ const Market = {
       strategyEl.style.display = isHomeView ? 'none' : '';
     }
 
-    // 업데이트 시간
+    // 업데이트 시간 + 캐시 상태 실시간 추적
     if (ms.updated_at) {
       const t = new Date(ms.updated_at);
-      document.getElementById('marketSummaryTime').innerHTML =
-        `${t.toLocaleTimeString('ko', { hour: '2-digit', minute: '2-digit' })} 기준 ${formatCacheStatus(ms)}`;
+      document.getElementById('marketSummaryTime').textContent =
+        `${t.toLocaleTimeString('ko', { hour: '2-digit', minute: '2-digit' })} 기준`;
+      CacheTracker.register('market', 'marketCacheStatus', ms, 300, () => Market.load());
     }
   },
 };
@@ -205,8 +206,9 @@ const Recommend = {
 
       if (data.updated_at) {
         const t = new Date(data.updated_at);
-        document.getElementById('recommendUpdateTime').innerHTML =
-          `${t.toLocaleTimeString('ko', { hour: '2-digit', minute: '2-digit' })} 기준 ${formatCacheStatus(data)}`;
+        document.getElementById('recommendUpdateTime').textContent =
+          `${t.toLocaleTimeString('ko', { hour: '2-digit', minute: '2-digit' })} 기준`;
+        CacheTracker.register('recommend', 'recommendCacheStatus', data, 300, () => Recommend.load());
       }
       SectionProgress.complete('recommend');
     } catch (e) {

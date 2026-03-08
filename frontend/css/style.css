@@ -448,6 +448,16 @@ body::before { display: none; }
   background: rgba(234, 179, 8, 0.10);
   border: 1px solid rgba(234, 179, 8, 0.2);
 }
+.cache-badge.expired {
+  color: #fb923c;
+  background: rgba(251, 146, 60, 0.12);
+  border: 1px solid rgba(251, 146, 60, 0.25);
+  animation: cache-expired-pulse 1s ease-in-out;
+}
+@keyframes cache-expired-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
 .clear-btn {
   background: none;
   border: 1px solid var(--border);

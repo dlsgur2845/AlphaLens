@@ -13,7 +13,7 @@ class Settings(BaseSettings):
     jwt_expire_minutes: int = 60  # 토큰 만료 시간
 
     cors_origins: str = "http://localhost:8000"
-    rate_limit_per_minute: int = 60
+    rate_limit_per_minute: int = 200
 
     cache_ttl_stock: int = 300
     cache_ttl_news: int = 600

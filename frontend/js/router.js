@@ -73,8 +73,9 @@ const Router = {
     const page = this._pages[nav];
     if (!page) return;
 
-    // 종목 상세 리소스 정리
+    // 리소스 정리
     StockDetail.cleanup();
+    CacheTracker.clear();
     this._setActiveNav(nav);
 
     if (location.hash !== page.hash) {
@@ -107,6 +108,7 @@ const Router = {
     StockDetail._loadRequestId++;
     this._setActiveNav('home');
     SectionProgress.clear();
+    CacheTracker.clear();
 
     document.getElementById('dashboard').style.display = 'none';
     document.getElementById('welcomeScreen').style.display = '';

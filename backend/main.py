@@ -185,7 +185,9 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         path = request.url.path
         _metrics["requests_total"][path] += 1
 
-        if path.startswith("/api/"):
+        # health, stats, 정적 파일은 rate limit 제외
+        _EXEMPT = ("/api/v1/health", "/api/v1/system/stats")
+        if path.startswith("/api/") and not path.startswith(_EXEMPT):
             client_ip = request.client.host if request.client else "unknown"
             now = time.time()
 
