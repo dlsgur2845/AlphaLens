@@ -93,8 +93,14 @@ async def _get_stock_list() -> list[dict]:
         # 더블체크 (다른 코루틴이 이미 갱신했을 수 있음)
         if _stock_list is not None and (time.time() - _stock_list_updated_at) < _STOCK_LIST_TTL:
             return _stock_list
-        _stock_list = await _fetch_krx_stock_list()
+        stocks = await _fetch_krx_stock_list()
+        etfs = await _fetch_etf_list()
+        # ETF 코드가 KOSPI/KOSDAQ 목록에도 존재하므로, ETF는 market을 덮어씌움
+        etf_codes = {e["code"] for e in etfs}
+        merged = [s for s in stocks if s["code"] not in etf_codes]
+        _stock_list = merged + etfs
         _stock_list_updated_at = time.time()
+        logger.info("Stock list loaded: %d stocks + %d ETFs", len(merged), len(etfs))
         return _stock_list
 
 
@@ -222,6 +228,42 @@ async def _fetch_naver_stock_list() -> list[dict]:
     for items in page_results:
         if isinstance(items, list):
             results.extend(items)
+
+    return results
+
+
+async def _fetch_etf_list() -> list[dict]:
+    """네이버 금융 API에서 국내 ETF 목록 가져오기 (시가총액 상위 200개)."""
+    results: list[dict] = []
+    client = get_desktop_client()
+
+    try:
+        resp = await client.get(
+            "https://finance.naver.com/api/sise/etfItemList.nhn",
+            params={
+                "etfType": 0,
+                "targetColumn": "market_sum",
+                "sortOrder": "desc",
+            },
+        )
+        if resp.status_code != 200:
+            return results
+        # 네이버 API는 EUC-KR 인코딩으로 응답
+        text = resp.content.decode("euc-kr", errors="replace")
+        data = json.loads(text)
+        items = data.get("result", {}).get("etfItemList", [])
+        # 시가총액 순으로 이미 정렬됨 — 상위 200개만 사용
+        for item in items[:200]:
+            code = item.get("itemcode", "")
+            name = item.get("itemname", "")
+            if code and name and len(code) == 6:
+                results.append({
+                    "code": code,
+                    "name": name,
+                    "market": "ETF",
+                })
+    except Exception as e:
+        logger.warning("ETF list fetch failed: %s", e)
 
     return results
 
