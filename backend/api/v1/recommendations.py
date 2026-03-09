@@ -31,9 +31,9 @@ logger = logging.getLogger(__name__)
 router = APIRouter(dependencies=[Depends(verify_api_key)])
 
 # 동시 스코어링 세마포어 (외부 API 부하 제어, 다른 API 연결 여유 확보)
-_CONCURRENCY_LIMIT = 8
+_CONCURRENCY_LIMIT = 10
 _CACHE_KEY_PREFIX = "recommendations"
-_CACHE_TTL = 300  # 5분
+_CACHE_TTL = 600  # 10분 (200개 스코어링 부하 감안)
 
 # 백그라운드 갱신 락
 _refresh_lock = asyncio.Lock()
@@ -208,10 +208,10 @@ async def _build_recommendations(top_n: int = 5, on_progress=None) -> dict:
             "updated_at": datetime.now().isoformat(),
         }
 
-    # 시장별 상위 종목 추출 (시가총액 순)
-    kospi = [s for s in all_stocks if s["market"] == "KOSPI"][:50]
-    kosdaq = [s for s in all_stocks if s["market"] == "KOSDAQ"][:30]
-    etfs = [s for s in all_stocks if s["market"] == "ETF"][:20]
+    # 시장별 상위 종목 추출 (시가총액 순, 총 200개)
+    kospi = [s for s in all_stocks if s["market"] == "KOSPI"][:100]
+    kosdaq = [s for s in all_stocks if s["market"] == "KOSDAQ"][:60]
+    etfs = [s for s in all_stocks if s["market"] == "ETF"][:40]
     target_stocks = kospi + kosdaq + etfs
 
     if on_progress:

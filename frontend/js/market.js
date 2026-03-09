@@ -179,27 +179,32 @@ const Recommend = {
     recSection.style.display = '';
     avoidSection.style.display = '';
 
-    // 스트리밍 프로그레스 UI 표시
-    recGrid.innerHTML = this._renderProgressUI();
-    avoidGrid.innerHTML = '<div class="section-loading-msg">주의 종목 분석 중</div>';
-
     SectionProgress.start('#recommendSection', 'recommend');
 
-    const progressEl = recGrid.querySelector('.recommend-progress');
-    const progressBar = recGrid.querySelector('.recommend-progress-fill');
-    const progressText = recGrid.querySelector('.recommend-progress-text');
-    const progressDetail = recGrid.querySelector('.recommend-progress-detail');
-
     try {
+      // 프로그레스 UI는 실제 스코어링이 시작될 때만 표시
+      let progressInitialized = false;
+      let progressEl, progressBar, progressText, progressDetail;
+
       const data = await API.streamRecommendations((prog) => {
+        // 캐시 히트 시 프로그레스 UI 표시 안 함
+        if (prog.phase === 'cached') return;
+
+        // 첫 비캐시 이벤트에서 프로그레스 UI 초기화
+        if (!progressInitialized) {
+          progressInitialized = true;
+          recGrid.innerHTML = this._renderProgressUI();
+          avoidGrid.innerHTML = '<div class="section-loading-msg">주의 종목 분석 중</div>';
+          progressEl = recGrid.querySelector('.recommend-progress');
+          progressBar = recGrid.querySelector('.recommend-progress-fill');
+          progressText = recGrid.querySelector('.recommend-progress-text');
+          progressDetail = recGrid.querySelector('.recommend-progress-detail');
+        }
+
         if (!progressEl) return;
         const pct = prog.total > 0 ? Math.round((prog.current / prog.total) * 100) : 0;
 
-        if (prog.phase === 'cached') {
-          progressBar.style.width = '100%';
-          progressText.textContent = '캐시 데이터 로드 완료';
-          progressDetail.textContent = '';
-        } else if (prog.phase === 'init') {
+        if (prog.phase === 'init') {
           progressBar.style.width = '2%';
           progressText.textContent = prog.message;
           progressDetail.textContent = '';
@@ -242,7 +247,7 @@ const Recommend = {
         const t = new Date(data.updated_at);
         document.getElementById('recommendUpdateTime').textContent =
           `${t.toLocaleTimeString('ko', { hour: '2-digit', minute: '2-digit' })} 기준`;
-        CacheTracker.register('recommend', 'recommendCacheStatus', data, 300, () => Recommend.load());
+        CacheTracker.register('recommend', 'recommendCacheStatus', data, 600, () => Recommend.load());
       }
       SectionProgress.complete('recommend');
     } catch (e) {
