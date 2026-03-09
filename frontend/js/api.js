@@ -116,9 +116,8 @@ const API = {
     return new Promise((resolve, reject) => {
       const url = `${this.BASE}/recommendations/stream`;
       const headers = this._getHeaders();
-      // EventSource는 커스텀 헤더 미지원 → fetch SSE 사용
       const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 180000);
+      const timer = setTimeout(() => controller.abort(), 300000);
 
       fetch(url, { signal: controller.signal, headers })
         .then(async (res) => {
@@ -132,38 +131,58 @@ const API = {
           const decoder = new TextDecoder();
           let buffer = '';
 
+          // SSE 표준 파서: \n\n 단위로 이벤트 분리
+          const processEvents = () => {
+            // 완전한 이벤트 블록(\n\n)이 있으면 처리
+            let idx;
+            while ((idx = buffer.indexOf('\n\n')) !== -1) {
+              const block = buffer.slice(0, idx);
+              buffer = buffer.slice(idx + 2);
+
+              let eventType = '';
+              let dataLines = [];
+
+              for (const line of block.split('\n')) {
+                if (line.startsWith('event: ')) {
+                  eventType = line.slice(7).trim();
+                } else if (line.startsWith('data: ')) {
+                  dataLines.push(line.slice(6));
+                } else if (line.startsWith('data:')) {
+                  dataLines.push(line.slice(5));
+                }
+              }
+
+              if (!eventType || dataLines.length === 0) continue;
+
+              const raw = dataLines.join('\n');
+              try {
+                const data = JSON.parse(raw);
+                if (eventType === 'progress' && onProgress) {
+                  onProgress(data);
+                } else if (eventType === 'result') {
+                  resolve(data);
+                  return true;
+                } else if (eventType === 'error') {
+                  reject(new Error(data.message || '스트리밍 오류'));
+                  return true;
+                }
+              } catch (_) {
+                console.warn('SSE JSON parse failed:', raw.slice(0, 100));
+              }
+            }
+            return false;
+          };
+
           while (true) {
             const { done, value } = await reader.read();
             if (done) break;
-
             buffer += decoder.decode(value, { stream: true });
-            const lines = buffer.split('\n');
-            buffer = lines.pop() || '';
-
-            let currentEvent = '';
-            for (const line of lines) {
-              if (line.startsWith('event: ')) {
-                currentEvent = line.slice(7).trim();
-              } else if (line.startsWith('data: ') && currentEvent) {
-                try {
-                  const data = JSON.parse(line.slice(6));
-                  if (currentEvent === 'progress' && onProgress) {
-                    onProgress(data);
-                  } else if (currentEvent === 'result') {
-                    resolve(data);
-                    return;
-                  } else if (currentEvent === 'error') {
-                    reject(new Error(data.message || '스트리밍 오류'));
-                    return;
-                  }
-                } catch (_) { /* skip malformed */ }
-                currentEvent = '';
-              } else if (line === '') {
-                currentEvent = '';
-              }
-            }
+            if (processEvents()) return;
           }
-          // 스트림 종료 시 result를 못 받았으면 에러
+          // 잔여 버퍼 처리
+          buffer += '\n\n';
+          if (processEvents()) return;
+
           reject(new Error('스트림이 결과 없이 종료됨'));
         })
         .catch((e) => {

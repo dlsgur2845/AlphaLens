@@ -391,14 +391,16 @@ async def stream_recommendations(
                     while progress_queue:
                         yield progress_queue.pop(0)
 
-                # 예외 전파
-                await build_task
-
                 # 남은 진행률 flush
                 while progress_queue:
                     yield progress_queue.pop(0)
 
-                if result_holder:
+                # 빌드 태스크 예외 확인
+                if build_task.exception() is not None:
+                    err = build_task.exception()
+                    logger.exception("추천 빌드 태스크 실패: %s", err)
+                    yield _sse("error", {"message": f"스코어링 실패: {err}"})
+                elif result_holder:
                     yield _sse("result", result_holder[0])
                 else:
                     yield _sse("error", {"message": "결과 생성 실패"})
