@@ -50,6 +50,16 @@ const App = {
       Toast.show(added ? `${d.name} 즐겨찾기 추가` : `${d.name} 즐겨찾기 해제`, added ? 'success' : 'info');
     });
 
+    // 홈 섹션 헤더 클릭 → 해당 페이지 이동
+    document.querySelectorAll('.section-header-nav[data-nav-to]').forEach(header => {
+      header.addEventListener('click', (e) => {
+        // "더보기" 버튼 클릭은 제외
+        if (e.target.closest('.clear-btn')) return;
+        if (Router.activeNav !== 'home') return;
+        Router.navigate(header.dataset.navTo);
+      });
+    });
+
     // 초기 홈 데이터 로드
     Favorites.render();
     Market.load();

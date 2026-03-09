@@ -64,16 +64,28 @@ const StockDetail = {
       SectionProgress.complete('chart');
     })).catch((e) => { console.error('Chart error:', e); SectionProgress.error('chart'); });
 
+    // 스코어링 + 뉴스 완료 시 오늘의 분석 렌더링
+    const _analysisData = { scoring: null, news: null };
+    const _tryRenderAnalysis = () => {
+      if (_analysisData.scoring && _analysisData.news && this._lastDetail) {
+        this.renderMovementAnalysis(this._lastDetail, _analysisData.scoring, _analysisData.news);
+      }
+    };
+
     API.getScoring(code).then((data) => guard(() => {
       this.renderScoring(data);
       SectionProgress.complete('score');
       Storage.addScoreHistory(code, data.total_score, data.signal);
       ScoreGauge.drawHistory(code);
+      _analysisData.scoring = data;
+      _tryRenderAnalysis();
     })).catch((e) => { console.error('Scoring error:', e); SectionProgress.error('score'); });
 
     API.getNews(code).then((data) => guard(() => {
       this.renderNews(data);
       SectionProgress.complete('news');
+      _analysisData.news = data;
+      _tryRenderAnalysis();
     })).catch((e) => { console.error('News error:', e); SectionProgress.error('news'); });
 
     API.getRelatedCompanies(code).then((data) => guard(() => {
@@ -522,5 +534,109 @@ const StockDetail = {
         window.scrollTo({ top: 0, behavior: 'smooth' });
       });
     });
+  },
+
+  renderMovementAnalysis(detail, scoring, news) {
+    const section = document.getElementById('movementAnalysis');
+    const content = document.getElementById('movementAnalysisContent');
+    if (!section || !content) return;
+
+    const changePct = detail.change_pct || 0;
+    const isUp = changePct > 0;
+    const isDown = changePct < 0;
+    const direction = isUp ? '상승' : isDown ? '하락' : '보합';
+    const dirClass = isUp ? 'up' : isDown ? 'down' : 'flat';
+
+    const factors = [];
+
+    // 1. 기술적 분석 요인
+    const bd = scoring.breakdown || {};
+    const details = scoring.details || {};
+    const tech = details.technical || {};
+    const signal = details.signal || {};
+
+    if (tech.rsi != null) {
+      if (tech.rsi > 70) factors.push({ type: 'warn', text: `RSI ${tech.rsi.toFixed(0)}으로 과매수 구간 — 단기 조정 가능성` });
+      else if (tech.rsi < 30) factors.push({ type: 'positive', text: `RSI ${tech.rsi.toFixed(0)}으로 과매도 구간 — 반등 기대` });
+      else if (isUp && tech.rsi > 50) factors.push({ type: 'positive', text: `RSI ${tech.rsi.toFixed(0)}으로 상승 모멘텀 유지` });
+      else if (isDown && tech.rsi < 50) factors.push({ type: 'negative', text: `RSI ${tech.rsi.toFixed(0)}으로 하락 모멘텀 지속` });
+    }
+
+    if (tech.macd) {
+      if (tech.macd.bullish) factors.push({ type: 'positive', text: 'MACD 골든크로스 — 상승 전환 신호' });
+      else if (tech.macd.bearish) factors.push({ type: 'negative', text: 'MACD 데드크로스 — 하락 전환 신호' });
+    }
+
+    if (tech.volume_trend) {
+      const vr = tech.volume_trend.volume_ratio;
+      if (vr > 2.0 && isUp) factors.push({ type: 'positive', text: `거래량 ${vr.toFixed(1)}배 급증 — 수급 유입 동반 상승` });
+      else if (vr > 2.0 && isDown) factors.push({ type: 'negative', text: `거래량 ${vr.toFixed(1)}배 급증 — 투매성 매도 발생` });
+      else if (vr < 0.5) factors.push({ type: 'warn', text: '거래량 급감 — 관망 심리 확대' });
+    }
+
+    // 2. 시그널 요인
+    if (signal.buy_signals && signal.buy_signals.length > 0 && isUp) {
+      factors.push({ type: 'positive', text: `매수 시그널: ${signal.buy_signals.slice(0, 2).join(', ')}` });
+    }
+    if (signal.sell_signals && signal.sell_signals.length > 0 && isDown) {
+      factors.push({ type: 'negative', text: `매도 시그널: ${signal.sell_signals.slice(0, 2).join(', ')}` });
+    }
+    if (signal.regime) {
+      const regimeMap = { BULL: '상승 추세', BEAR: '하락 추세', SIDEWAYS: '횡보 구간' };
+      if (regimeMap[signal.regime]) factors.push({ type: signal.regime === 'BULL' ? 'positive' : signal.regime === 'BEAR' ? 'negative' : 'neutral', text: `현재 시장 국면: ${regimeMap[signal.regime]}` });
+    }
+
+    // 3. 뉴스 감성 요인
+    if (news.articles && news.articles.length > 0) {
+      const sentLabel = news.overall_label;
+      const sentType = sentLabel === '긍정' ? 'positive' : sentLabel === '부정' ? 'negative' : 'neutral';
+      factors.push({ type: sentType, text: `뉴스 감성 ${sentLabel} (긍정 ${news.positive_count} / 부정 ${news.negative_count} / 중립 ${news.neutral_count})` });
+
+      // 주요 뉴스 헤드라인 (상위 3개)
+      const headlines = news.articles.slice(0, 3);
+      headlines.forEach(a => {
+        const sCls = a.sentiment_label === '긍정' ? 'positive' : a.sentiment_label === '부정' ? 'negative' : 'neutral';
+        factors.push({ type: sCls, text: a.title, isNews: true });
+      });
+    }
+
+    // 4. 펀더멘탈 요인
+    const fund = details.fundamental || {};
+    if (fund.per != null) {
+      if (fund.per < 0) factors.push({ type: 'negative', text: `PER 음수(적자) — 기업 수익성 우려` });
+      else if (fund.per > 50) factors.push({ type: 'warn', text: `PER ${fund.per.toFixed(1)}배 — 밸류에이션 부담` });
+      else if (fund.per < 10 && fund.per > 0) factors.push({ type: 'positive', text: `PER ${fund.per.toFixed(1)}배 — 저평가 매력` });
+    }
+
+    // 5. 리스크 등급
+    if (scoring.risk_grade) {
+      const riskMap = { A: ['positive', '매우 안정'], B: ['positive', '안정'], C: ['neutral', '보통'], D: ['warn', '위험'], E: ['negative', '매우 위험'] };
+      const [rt, rl] = riskMap[scoring.risk_grade] || ['neutral', scoring.risk_grade];
+      factors.push({ type: rt, text: `리스크 등급 ${scoring.risk_grade} (${rl})` });
+    }
+
+    if (factors.length === 0) {
+      section.style.display = 'none';
+      return;
+    }
+
+    section.style.display = '';
+    const changeStr = changePct > 0 ? `+${changePct.toFixed(2)}%` : `${changePct.toFixed(2)}%`;
+
+    content.innerHTML = `
+      <div class="movement-summary ${dirClass}">
+        <span class="movement-direction">${direction}</span>
+        <span class="movement-change">${changeStr}</span>
+        <span class="movement-label">— 주요 등락 요인 분석</span>
+      </div>
+      <div class="movement-factors">
+        ${factors.map(f => `
+          <div class="movement-factor ${f.type}${f.isNews ? ' is-news' : ''}">
+            <span class="movement-factor-dot"></span>
+            <span class="movement-factor-text">${escapeHTML(f.text)}</span>
+          </div>
+        `).join('')}
+      </div>
+    `;
   },
 };

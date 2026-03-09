@@ -178,12 +178,46 @@ const Recommend = {
 
     recSection.style.display = '';
     avoidSection.style.display = '';
-    recGrid.innerHTML = '<div class="section-loading-msg">추천 종목 분석 중</div>';
+
+    // 스트리밍 프로그레스 UI 표시
+    recGrid.innerHTML = this._renderProgressUI();
     avoidGrid.innerHTML = '<div class="section-loading-msg">주의 종목 분석 중</div>';
 
     SectionProgress.start('#recommendSection', 'recommend');
+
+    const progressEl = recGrid.querySelector('.recommend-progress');
+    const progressBar = recGrid.querySelector('.recommend-progress-fill');
+    const progressText = recGrid.querySelector('.recommend-progress-text');
+    const progressDetail = recGrid.querySelector('.recommend-progress-detail');
+
     try {
-      const data = await API.getRecommendations();
+      const data = await API.streamRecommendations((prog) => {
+        if (!progressEl) return;
+        const pct = prog.total > 0 ? Math.round((prog.current / prog.total) * 100) : 0;
+
+        if (prog.phase === 'cached') {
+          progressBar.style.width = '100%';
+          progressText.textContent = '캐시 데이터 로드 완료';
+          progressDetail.textContent = '';
+        } else if (prog.phase === 'init') {
+          progressBar.style.width = '2%';
+          progressText.textContent = prog.message;
+          progressDetail.textContent = '';
+        } else if (prog.phase === 'scoring') {
+          const displayPct = Math.max(5, Math.min(pct, 90));
+          progressBar.style.width = displayPct + '%';
+          progressText.textContent = `스코어링 진행 중 (${prog.current}/${prog.total})`;
+          progressDetail.textContent = prog.message;
+        } else if (prog.phase === 'ranking') {
+          progressBar.style.width = '92%';
+          progressText.textContent = prog.message;
+          progressDetail.textContent = '';
+        } else if (prog.phase === 'market') {
+          progressBar.style.width = '96%';
+          progressText.textContent = prog.message;
+          progressDetail.textContent = '';
+        }
+      });
 
       // 시장 요약은 현재 시장 탭에 있을 때만 렌더 (다른 탭 침범 방지)
       if (data.market_summary && Router.activeNav === 'market') {
@@ -219,6 +253,21 @@ const Recommend = {
     }
   },
 
+  _renderProgressUI() {
+    return `
+      <div class="recommend-progress">
+        <div class="recommend-progress-header">
+          <span class="recommend-progress-icon"></span>
+          <span class="recommend-progress-text">추천 종목 분석 준비 중...</span>
+        </div>
+        <div class="recommend-progress-bar-wrap">
+          <div class="recommend-progress-fill" style="width:0%"></div>
+        </div>
+        <div class="recommend-progress-detail"></div>
+      </div>
+    `;
+  },
+
   _renderCards(container, stocks, isRecommended) {
     container.innerHTML = stocks.map((s) => {
       const score = s.total_score != null ? s.total_score : 50;
@@ -244,6 +293,20 @@ const Recommend = {
         badges.push(`<span class="recommend-card-badge">PER ${s.per.toFixed(1)}</span>`);
       }
 
+      // 당일 이슈 뉴스
+      const issues = s.daily_issues || [];
+      const issuesHtml = issues.length > 0
+        ? `<div class="recommend-card-issues">
+            ${issues.map(n => {
+              const sentCls = n.sentiment === '긍정' ? 'positive' : n.sentiment === '부정' ? 'negative' : 'neutral-news';
+              return `<div class="recommend-issue-item ${sentCls}">
+                <span class="recommend-issue-dot"></span>
+                <span class="recommend-issue-text">${escapeHTML(n.title)}</span>
+              </div>`;
+            }).join('')}
+          </div>`
+        : '';
+
       return `
         <div class="recommend-card ${cardClass}" data-code="${s.code}" data-name="${escapeHTML(s.name)}">
           <div class="recommend-card-header">
@@ -256,6 +319,7 @@ const Recommend = {
           </div>
           <span class="recommend-card-signal score-signal ${signalClass}">${escapeHTML(signalLabel)}</span>
           ${reason ? `<div class="recommend-card-reason">${escapeHTML(reason)}</div>` : ''}
+          ${issuesHtml}
           ${badges.length > 0 ? `<div class="recommend-card-indicators">${badges.join('')}</div>` : ''}
         </div>
       `;

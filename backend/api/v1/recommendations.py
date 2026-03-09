@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import asyncio
+import json as _json
 import logging
 import time
 from datetime import datetime
+from typing import AsyncGenerator
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from starlette.responses import StreamingResponse
 
 from backend.services.cache_service import cache
 from backend.services import scoring_service
@@ -34,6 +37,42 @@ _CACHE_TTL = 300  # 5분
 
 # 백그라운드 갱신 락
 _refresh_lock = asyncio.Lock()
+
+
+async def _fetch_daily_issues(code: str, name: str) -> list[dict]:
+    """종목의 최신 뉴스 헤드라인 3개를 가져온다 (당일 이슈)."""
+    try:
+        from backend.services.news_service import get_stock_news
+        news_result = await asyncio.wait_for(
+            get_stock_news(code, stock_name=name, max_articles=3),
+            timeout=5.0,
+        )
+        return [
+            {
+                "title": a.title,
+                "sentiment": a.sentiment_label,
+                "source": a.source,
+                "date": a.date,
+            }
+            for a in news_result.articles[:3]
+        ]
+    except Exception as e:
+        logger.debug("뉴스 수집 실패 (%s): %s", code, e)
+        return []
+
+
+async def _attach_daily_issues(items: list[dict], codes: list[str]) -> None:
+    """추천/비추천 종목 리스트에 당일 뉴스 헤드라인을 병렬 첨부."""
+    code_to_item = {item["code"]: item for item in items}
+    tasks = [
+        _fetch_daily_issues(item["code"], item["name"])
+        for item in items
+        if item["code"] in codes
+    ]
+    results = await asyncio.gather(*tasks)
+
+    for item, issues in zip(items, results):
+        item["daily_issues"] = issues
 
 
 async def _score_single(code: str, semaphore: asyncio.Semaphore) -> dict | None:
@@ -126,9 +165,38 @@ async def _build_market_summary() -> dict:
     return summary
 
 
-async def _build_recommendations(top_n: int = 5) -> dict:
-    """전체 종목을 스코어링하여 추천/비추천 목록 생성."""
+async def _score_single_tracked(
+    code: str,
+    name: str,
+    semaphore: asyncio.Semaphore,
+    progress: dict,
+    on_progress=None,
+) -> dict | None:
+    """진행률 추적이 포함된 단일 종목 스코어링."""
+    result = await _score_single(code, semaphore)
+    progress["done"] += 1
+    if on_progress:
+        await on_progress(
+            phase="scoring",
+            current=progress["done"],
+            total=progress["total"],
+            message=f"{name} 스코어링 완료 ({progress['done']}/{progress['total']})",
+        )
+    return result
+
+
+async def _build_recommendations(top_n: int = 5, on_progress=None) -> dict:
+    """전체 종목을 스코어링하여 추천/비추천 목록 생성.
+
+    Args:
+        top_n: 추천/비추천 종목 수
+        on_progress: 진행률 콜백 (SSE 스트리밍용).
+                     signature: async (phase, current, total, message) -> None
+    """
     start_time = time.time()
+
+    if on_progress:
+        await on_progress(phase="init", current=0, total=0, message="종목 목록 로딩 중...")
 
     # KOSPI + KOSDAQ 종목 리스트 가져오기
     all_stocks = await _get_stock_list()
@@ -146,10 +214,25 @@ async def _build_recommendations(top_n: int = 5) -> dict:
     kosdaq = [s for s in all_stocks if s["market"] == "KOSDAQ"][:30]
     target_stocks = kospi + kosdaq
 
-    # 병렬 스코어링 (세마포어로 동시 실행 수 제어)
+    if on_progress:
+        await on_progress(
+            phase="scoring",
+            current=0,
+            total=len(target_stocks),
+            message=f"{len(target_stocks)}개 종목 스코어링 시작...",
+        )
+
+    # 병렬 스코어링 (세마포어로 동시 실행 수 제어) + 진행률 추적
     semaphore = asyncio.Semaphore(_CONCURRENCY_LIMIT)
-    tasks = [_score_single(s["code"], semaphore) for s in target_stocks]
+    progress = {"done": 0, "total": len(target_stocks)}
+    tasks = [
+        _score_single_tracked(s["code"], s.get("name", s["code"]), semaphore, progress, on_progress)
+        for s in target_stocks
+    ]
     results = await asyncio.gather(*tasks)
+
+    if on_progress:
+        await on_progress(phase="ranking", current=0, total=0, message="순위 산정 및 결과 정리 중...")
 
     # 성공한 결과만 필터링
     scored = [r for r in results if r is not None]
@@ -173,6 +256,16 @@ async def _build_recommendations(top_n: int = 5) -> dict:
         if r.code not in {item["code"] for item in recommended}:
             item = format_stock_item(r, is_recommended=False)
             not_recommended.append(item)
+
+    if on_progress:
+        await on_progress(phase="news", current=0, total=0, message="당일 이슈 수집 중...")
+
+    # 추천/비추천 종목의 당일 뉴스 헤드라인 수집
+    final_codes = [item["code"] for item in recommended + not_recommended]
+    await _attach_daily_issues(recommended + not_recommended, final_codes)
+
+    if on_progress:
+        await on_progress(phase="market", current=0, total=0, message="시장 요약 데이터 생성 중...")
 
     elapsed = round(time.time() - start_time, 1)
 
@@ -230,6 +323,99 @@ async def get_market_summary():
     except Exception:
         logger.exception("시장 요약 생성 실패")
         raise HTTPException(status_code=500, detail="시장 요약 데이터를 불러올 수 없습니다")
+
+
+@router.get("/stream")
+async def stream_recommendations(
+    request: Request,
+    top_n: int = Query(5, ge=1, le=20, description="추천/비추천 종목 수"),
+):
+    """SSE 스트리밍으로 추천 종목 생성 진행률을 실시간 전송.
+
+    캐시 히트 시 즉시 result 이벤트 전송 후 종료.
+    캐시 미스 시 progress → result 순서로 전송.
+    """
+
+    async def event_generator() -> AsyncGenerator[str, None]:
+        def _sse(event: str, data: dict) -> str:
+            return f"event: {event}\ndata: {_json.dumps(data, ensure_ascii=False)}\n\n"
+
+        # 캐시 체크
+        cache_key = f"{_CACHE_KEY_PREFIX}:top_{top_n}"
+        cached, cache_age = cache.get_with_age(cache_key)
+        if cached is not None:
+            cached["_cached"] = True
+            cached["_cache_age"] = cache_age
+            yield _sse("progress", {"phase": "cached", "current": 1, "total": 1, "message": "캐시 데이터 로드 완료"})
+            yield _sse("result", cached)
+            return
+
+        # 캐시 미스 - 스코어링 진행
+        async def send_progress(phase: str, current: int, total: int, message: str):
+            # 클라이언트 연결이 끊겼는지 확인
+            if await request.is_disconnected():
+                return
+            # 진행률 이벤트 전송을 위한 큐에 추가
+            progress_queue.append(_sse("progress", {
+                "phase": phase, "current": current, "total": total, "message": message,
+            }))
+
+        progress_queue: list[str] = []
+
+        try:
+            async with _refresh_lock:
+                # 더블 체크
+                cached, cache_age = cache.get_with_age(cache_key)
+                if cached is not None:
+                    cached["_cached"] = True
+                    cached["_cache_age"] = cache_age
+                    yield _sse("progress", {"phase": "cached", "current": 1, "total": 1, "message": "캐시 데이터 로드 완료"})
+                    yield _sse("result", cached)
+                    return
+
+                # 진행률 콜백이 비동기지만 gather와 함께 사용하므로
+                # 큐에 쌓아두고 주기적으로 flush
+                result_holder: list[dict] = []
+
+                async def _build_with_progress():
+                    result = await _build_recommendations(top_n, on_progress=send_progress)
+                    cache.set(cache_key, result, ttl=_CACHE_TTL)
+                    result["_cached"] = False
+                    result_holder.append(result)
+
+                # 빌드 태스크 실행하며 큐를 주기적으로 비움
+                build_task = asyncio.create_task(_build_with_progress())
+
+                while not build_task.done():
+                    await asyncio.sleep(0.3)
+                    while progress_queue:
+                        yield progress_queue.pop(0)
+
+                # 예외 전파
+                await build_task
+
+                # 남은 진행률 flush
+                while progress_queue:
+                    yield progress_queue.pop(0)
+
+                if result_holder:
+                    yield _sse("result", result_holder[0])
+                else:
+                    yield _sse("error", {"message": "결과 생성 실패"})
+
+        except Exception as e:
+            logger.exception("추천 스트리밍 실패")
+            yield _sse("error", {"message": str(e)})
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",  # nginx 버퍼링 비활성화
+        },
+    )
 
 
 @router.get("")

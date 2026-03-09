@@ -9,7 +9,7 @@
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="manifest" href="/manifest.json">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/css/style.css?v=13">
+  <link rel="stylesheet" href="/css/style.css?v=14">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js" integrity="sha384-vsrfeLOOY6KuIYKDlmVH5UiBmgIdB1oEf7p01YgWHuqmOHfZr374+odEv96n9tNC" crossorigin="anonymous"></script>
   <noscript><style>.app-content{display:flex;justify-content:center;align-items:center;min-height:80vh;}.noscript-msg{color:#94a3b8;text-align:center;}</style></noscript>
 </head>
@@ -82,7 +82,7 @@
 
           <!-- 즐겨찾기 -->
           <div id="favoritesSection" class="content-section" style="display:none">
-            <div class="section-header">
+            <div class="section-header section-header-nav" data-nav-to="favorites">
               <span class="section-title">관심종목</span>
               <button class="clear-btn" id="moreFavorites">더보기</button>
             </div>
@@ -100,7 +100,7 @@
 
           <!-- 시장 요약 -->
           <div id="marketSummarySection" class="content-section" style="display:none">
-            <div class="section-header">
+            <div class="section-header section-header-nav" data-nav-to="market">
               <span class="section-title">시장 환경</span>
               <span class="section-time" id="marketSummaryTime"></span>
               <span id="marketCacheStatus"></span>
@@ -138,7 +138,7 @@
 
           <!-- 지정학 리스크 -->
           <div id="geopoliticalSection" class="content-section" style="display:none">
-            <div class="section-header">
+            <div class="section-header section-header-nav" data-nav-to="market">
               <span class="section-title">지정학 리스크</span>
               <span class="section-time" id="geoUpdateTime"></span>
               <span id="geoCacheStatus"></span>
@@ -390,6 +390,12 @@
           </div>
         </section>
 
+        <!-- 오늘의 분석 (등락 이유) -->
+        <section class="movement-analysis" id="movementAnalysis" style="display:none" role="region" aria-label="오늘의 분석">
+          <div class="section-header"><span class="section-title">오늘의 분석</span></div>
+          <div class="movement-analysis-content" id="movementAnalysisContent"></div>
+        </section>
+
         <!-- 투자 액션 가이드 -->
         <div class="action-guide" id="actionGuide" style="display:none" role="region" aria-label="투자 액션 가이드">
           <div class="section-header"><span class="section-title">투자 액션 가이드</span></div>
@@ -507,22 +513,22 @@
   </div>
 </div>
 
-<script src="/js/api.js?v=13"></script>
-<script src="/js/storage.js?v=13"></script>
-<script src="/js/chart.js?v=13"></script>
-<script src="/js/score.js?v=13"></script>
-<script src="/js/search.js?v=13"></script>
-<script src="/js/stream.js?v=13"></script>
-<script src="/js/utils.js?v=13"></script>
-<script src="/js/geopolitical.js?v=13"></script>
-<script src="/js/market.js?v=13"></script>
-<script src="/js/investor.js?v=13"></script>
-<script src="/js/portfolio.js?v=13"></script>
-<script src="/js/monitor.js?v=13"></script>
-<script src="/js/favorites.js?v=13"></script>
-<script src="/js/compare.js?v=13"></script>
-<script src="/js/stock-detail.js?v=13"></script>
-<script src="/js/router.js?v=13"></script>
-<script src="/js/app.js?v=13"></script>
+<script src="/js/api.js?v=14"></script>
+<script src="/js/storage.js?v=14"></script>
+<script src="/js/chart.js?v=14"></script>
+<script src="/js/score.js?v=14"></script>
+<script src="/js/search.js?v=14"></script>
+<script src="/js/stream.js?v=14"></script>
+<script src="/js/utils.js?v=14"></script>
+<script src="/js/geopolitical.js?v=14"></script>
+<script src="/js/market.js?v=14"></script>
+<script src="/js/investor.js?v=14"></script>
+<script src="/js/portfolio.js?v=14"></script>
+<script src="/js/monitor.js?v=14"></script>
+<script src="/js/favorites.js?v=14"></script>
+<script src="/js/compare.js?v=14"></script>
+<script src="/js/stock-detail.js?v=14"></script>
+<script src="/js/router.js?v=14"></script>
+<script src="/js/app.js?v=14"></script>
 </body>
 </html>

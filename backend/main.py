@@ -126,7 +126,8 @@ class RequestTimeoutMiddleware(BaseHTTPMiddleware):
 
     DEFAULT_TIMEOUT = 45  # 일반 API 기본 타임아웃
     LONG_TIMEOUT_PREFIXES = [
-        ("/api/v1/recommendations", 90),
+        ("/api/v1/recommendations/stream", 180),  # SSE 스트리밍
+        ("/api/v1/recommendations", 120),
         ("/api/v1/geopolitical", 60),
         ("/api/v1/scoring", 60),
         ("/api/v1/related", 60),
@@ -134,9 +135,14 @@ class RequestTimeoutMiddleware(BaseHTTPMiddleware):
         ("/api/v1/portfolio", 120),
     ]
 
+    # SSE 스트리밍은 타임아웃 미들웨어에서 제외 (자체 타임아웃 관리)
+    SSE_EXEMPT = ("/api/v1/recommendations/stream",)
+
     async def dispatch(self, request: Request, call_next):
         path = request.url.path
         if not path.startswith("/api/"):
+            return await call_next(request)
+        if path in self.SSE_EXEMPT:
             return await call_next(request)
 
         timeout = self.DEFAULT_TIMEOUT
