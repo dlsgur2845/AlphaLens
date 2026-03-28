@@ -1,4 +1,4 @@
-"""백테스팅 서비스 - 6-팩터 모델 성과 검증 프레임워크."""
+"""백테스팅 서비스 - 멀티팩터 모델 성과 검증 프레임워크."""
 
 from __future__ import annotations
 
@@ -20,10 +20,19 @@ BUY_THRESHOLD = 65   # 매수 진입 점수
 SELL_THRESHOLD = 35   # 매도 청산 점수
 INITIAL_CAPITAL = 100_000_000  # 1억원
 
-# 기본 가중치
+# 거래비용
+COMMISSION_RATE = 0.0025   # 0.25% 수수료 (매수+매도 편도)
+SLIPPAGE_RATE = 0.001      # 0.1% 슬리피지
+
+# 기본 가중치 (7-factor)
 DEFAULT_WEIGHTS = {
     "technical": 0.23, "signal": 0.19, "fundamental": 0.19,
     "macro": 0.14, "risk": 0.15, "related": 0.05, "news": 0.05,
+}
+
+# 3-factor 전용 가중치 (가격 기반 팩터만, look-ahead bias 없음)
+THREE_FACTOR_WEIGHTS = {
+    "technical": 0.40, "signal": 0.33, "risk": 0.27,
 }
 
 
@@ -60,7 +69,7 @@ class BacktestEngine:
         volumes = hist["Volume"].values.tolist()
         dates = [d.strftime("%Y-%m-%d") for d in hist.index]
 
-        return self._simulate(closes, volumes, dates, weights)
+        return self._simulate(closes, volumes, dates, weights, stock_code=stock_code)
 
     def _simulate(
         self,
@@ -68,44 +77,107 @@ class BacktestEngine:
         volumes: list[float],
         dates: list[str],
         weights: Optional[dict] = None,
+        stock_code: str = "",
+        include_costs: bool = False,
     ) -> dict:
-        """매매 시뮬레이션 + 성과 지표 산출 (테스트 가능한 순수 로직)."""
+        """매매 시뮬레이션 + 성과 지표 산출 (테스트 가능한 순수 로직).
+
+        3-factor 모드: weights=THREE_FACTOR_WEIGHTS 전달 시
+        tech + signal + risk만으로 0-100 스코어 생성 (재정규화).
+
+        ┌─────────────────────────────────────────┐
+        │  closes/volumes → indicator 계산         │
+        │  ├─ calc_technical_score (가격 기반)      │
+        │  ├─ calc_signal_score   (가격 기반)      │
+        │  └─ calc_risk_score     (가격 기반, opt)  │
+        │  → 가중합 → buy/sell 시그널 → trades     │
+        │  → 성과 지표 (Sharpe, MDD, 수익률)       │
+        └─────────────────────────────────────────┘
+        """
         from backend.utils.technical import calc_technical_score
         from backend.services.signal_service import calc_signal_score
 
         w = weights or DEFAULT_WEIGHTS.copy()
+        use_risk = "risk" in w and w.get("risk", 0) > 0
+        is_three_factor = set(w.keys()) == {"technical", "signal", "risk"}
+
+        # risk 팩터 사용 시 import
+        calc_risk = None
+        if use_risk:
+            try:
+                from backend.services.risk_service import calc_risk_score
+                calc_risk = calc_risk_score
+            except ImportError:
+                logger.warning("risk_service import 실패, risk=50 고정")
 
         trades: list[dict] = []
         position: Optional[dict] = None
         daily_scores: list[dict] = []
+        daily_returns: list[float] = []  # Sharpe ratio 계산용
+
+        prev_portfolio_value = 1.0  # 정규화된 포트폴리오 가치
 
         for i in range(60, len(closes)):
             window_closes = pd.Series(closes[: i + 1], dtype=float)
             window_volumes = pd.Series(volumes[: i + 1], dtype=float)
 
+            # 기술적 스코어
             tech_score, _ = calc_technical_score(window_closes, window_volumes)
+            if np.isnan(tech_score):
+                tech_score = 50.0
 
+            # 시그널 스코어
             sig_result = calc_signal_score(window_closes, window_volumes)
             sig_score = sig_result.score if hasattr(sig_result, "score") else 50.0
+            if np.isnan(sig_score):
+                sig_score = 50.0
 
-            # 간이 종합 점수 (tech + signal 가중 평균, 다른 팩터는 50 고정)
-            total = (
-                tech_score * w.get("technical", 0.23)
-                + sig_score * w.get("signal", 0.19)
-                + 50 * w.get("fundamental", 0.19)
-                + 50 * w.get("macro", 0.14)
-                + 50 * w.get("risk", 0.15)
-                + 50 * w.get("related", 0.05)
-                + 50 * w.get("news", 0.05)
-            )
+            # 리스크 스코어 (가격 기반, credit_data=None)
+            risk_score = 50.0
+            if calc_risk is not None:
+                try:
+                    risk_result = calc_risk(window_closes, window_volumes)
+                    risk_score = risk_result.score if hasattr(risk_result, "score") else 50.0
+                    if np.isnan(risk_score):
+                        risk_score = 50.0
+                except Exception:
+                    risk_score = 50.0
 
-            daily_scores.append({
+            # 종합 점수 계산
+            if is_three_factor:
+                total = (
+                    tech_score * w["technical"]
+                    + sig_score * w["signal"]
+                    + risk_score * w["risk"]
+                )
+            else:
+                total = (
+                    tech_score * w.get("technical", 0.23)
+                    + sig_score * w.get("signal", 0.19)
+                    + 50 * w.get("fundamental", 0.19)
+                    + 50 * w.get("macro", 0.14)
+                    + risk_score * w.get("risk", 0.15)
+                    + 50 * w.get("related", 0.05)
+                    + 50 * w.get("news", 0.05)
+                )
+
+            score_entry = {
                 "date": dates[i],
                 "close": closes[i],
                 "score": round(total, 1),
                 "technical": round(tech_score, 1),
                 "signal": round(sig_score, 1),
-            })
+            }
+            if use_risk:
+                score_entry["risk"] = round(risk_score, 1)
+            daily_scores.append(score_entry)
+
+            # 일별 포트폴리오 수익률 추적 (Sharpe 계산용)
+            if position is not None and closes[i - 1] > 0:
+                day_ret = (closes[i] - closes[i - 1]) / closes[i - 1]
+                daily_returns.append(day_ret)
+            else:
+                daily_returns.append(0.0)
 
             # 매매 시뮬레이션
             if position is None and total >= BUY_THRESHOLD:
@@ -115,7 +187,9 @@ class BacktestEngine:
                     "entry_score": total,
                 }
             elif position is not None and total <= SELL_THRESHOLD:
-                ret = (closes[i] - position["entry_price"]) / position["entry_price"] * 100
+                raw_ret = (closes[i] - position["entry_price"]) / position["entry_price"] * 100 if position["entry_price"] > 0 else 0.0
+                cost_pct = (COMMISSION_RATE * 2 + SLIPPAGE_RATE * 2) * 100 if include_costs else 0.0
+                ret = raw_ret - cost_pct
                 holding = sum(
                     1 for d in dates if position["entry_date"] <= d <= dates[i]
                 )
@@ -125,6 +199,8 @@ class BacktestEngine:
                     "entry_price": round(position["entry_price"]),
                     "exit_price": round(closes[i]),
                     "return_pct": round(ret, 2),
+                    "raw_return_pct": round(raw_ret, 2),
+                    "cost_pct": round(cost_pct, 2),
                     "score_at_entry": round(position["entry_score"], 1),
                     "holding_days": holding,
                 })
@@ -132,7 +208,9 @@ class BacktestEngine:
 
         # 미청산 포지션 처리
         if position is not None:
-            ret = (closes[-1] - position["entry_price"]) / position["entry_price"] * 100
+            raw_ret = (closes[-1] - position["entry_price"]) / position["entry_price"] * 100 if position["entry_price"] > 0 else 0.0
+            cost_pct = (COMMISSION_RATE + SLIPPAGE_RATE) * 100 if include_costs else 0.0  # 매수만
+            ret = raw_ret - cost_pct
             holding = sum(
                 1 for d in dates if position["entry_date"] <= d <= dates[-1]
             )
@@ -142,6 +220,8 @@ class BacktestEngine:
                 "entry_price": round(position["entry_price"]),
                 "exit_price": round(closes[-1]),
                 "return_pct": round(ret, 2),
+                "raw_return_pct": round(raw_ret, 2),
+                "cost_pct": round(cost_pct, 2),
                 "score_at_entry": round(position["entry_score"], 1),
                 "holding_days": holding,
                 "open": True,
@@ -153,7 +233,8 @@ class BacktestEngine:
         losses = [r for r in returns if r <= 0]
 
         # Buy & Hold 비교
-        bnh_return = (closes[-1] - closes[60]) / closes[60] * 100
+        base_price = closes[60] if closes[60] > 0 else 1.0
+        bnh_return = (closes[-1] - base_price) / base_price * 100
 
         # 누적 수익률 (복리)
         cumulative = 1.0
@@ -162,12 +243,12 @@ class BacktestEngine:
         total_return = (cumulative - 1) * 100
 
         # MDD 계산
-        peak = closes[60]
+        peak = closes[60] if closes[60] > 0 else 1.0
         max_dd = 0.0
         for c in closes[60:]:
             if c > peak:
                 peak = c
-            dd = (peak - c) / peak * 100
+            dd = (peak - c) / peak * 100 if peak > 0 else 0.0
             if dd > max_dd:
                 max_dd = dd
 
@@ -179,12 +260,21 @@ class BacktestEngine:
             else 0
         )
 
+        # Sharpe ratio (연환산, 무위험수익률 3%)
+        sharpe_ratio = 0.0
+        if daily_returns:
+            dr = np.array(daily_returns)
+            daily_rf = 0.03 / 252
+            excess = dr - daily_rf
+            if np.std(excess) > 0:
+                sharpe_ratio = float(np.mean(excess) / np.std(excess) * np.sqrt(252))
+
         avg_win = float(np.mean(wins)) if wins else 0.0
         avg_loss = float(np.mean(losses)) if losses else 0.0
         pl_ratio = round(abs(avg_win / avg_loss), 2) if wins and losses and avg_loss != 0 else 0.0
 
         return {
-            "stock_code": dates[0].split("-")[0] if dates else "",  # placeholder
+            "stock_code": stock_code or "",
             "period": f"{dates[0]} ~ {dates[-1]}" if dates else "",
             "trading_days": trading_days,
             "total_return": round(total_return, 2),
@@ -192,6 +282,7 @@ class BacktestEngine:
             "buy_hold_return": round(bnh_return, 2),
             "excess_return": round(total_return - bnh_return, 2),
             "max_drawdown": round(max_dd, 2),
+            "sharpe_ratio": round(sharpe_ratio, 3),
             "total_trades": len(trades),
             "win_rate": round(len(wins) / max(len(trades), 1) * 100, 1),
             "avg_win": round(avg_win, 2),
