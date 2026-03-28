@@ -41,7 +41,11 @@
       "Bash(docker images:*)",
       "Bash(docker run:*)",
       "Bash(docker image:*)",
-      "Bash(docker restart:*)"
+      "Bash(docker restart:*)",
+      "Bash(git push:*)",
+      "Bash(wc -l /c/Users/dlsgu/Desktop/AlphaLens/backend/services/*.py)",
+      "Bash(wc -l /c/Users/dlsgu/Desktop/AlphaLens/backend/api/v1/*.py)",
+      "Bash(wc -l /c/Users/dlsgu/Desktop/AlphaLens/frontend/js/*.js)"
     ]
   }
 }
