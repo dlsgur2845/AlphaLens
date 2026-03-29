@@ -58,7 +58,7 @@
 | `--text-heading` | `#f1f5f9` | 헤딩, 강조 | 14.5:1 |
 | `--text-primary` | `#e2e8f0` | 본문 | 12.5:1 |
 | `--text-secondary` | `#8594a9` | 보조 텍스트 | 5.1:1 (AA pass) |
-| `--text-muted` | `#64748b` | 라벨, 캡션 | 4.1:1 (AA large pass) |
+| `--text-muted` | `#6b7a8d` | 라벨, 캡션 | 4.5:1 (AA pass) |
 
 ### Accent
 | Token | Hex | Usage |
