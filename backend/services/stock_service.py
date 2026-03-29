@@ -494,45 +494,113 @@ def _save_file_cache(code: str, prices: list[PricePoint]) -> None:
 
 
 async def get_price_history(code: str, days: int = 90) -> PriceHistory | None:
-    """네이버 금융에서 가격 히스토리 조회 (파일 캐시 지원)."""
+    """yfinance로 가격 히스토리 조회 (파일 캐시 지원)."""
     cache_key = f"price:{code}:{days}"
     cached = cache.get(cache_key)
     if cached:
         return cached
 
-    if not _cb_naver_desktop.can_execute():
-        logger.warning("Naver desktop circuit breaker open, skipping price history for %s", code)
+    name = await get_stock_name(code)
+
+    # 파일 캐시 확인
+    file_cached = _load_file_cache(code)
+    if file_cached:
+        cached_latest = file_cached[-1]["date"]
+        days_since = (datetime.now() - datetime.strptime(cached_latest, "%Y-%m-%d")).days
+        if days_since <= 1 and len(file_cached) >= days * 5 // 7:
+            # 캐시가 충분히 최신이면 바로 사용
+            cutoff = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
+            prices = [PricePoint(**p) for p in file_cached if p["date"] >= cutoff]
+            if prices:
+                result = PriceHistory(code=code, name=name, prices=prices)
+                cache.set(cache_key, result, ttl=300)
+                return result
+
+    # yfinance로 데이터 가져오기
+    prices = await _fetch_yfinance(code, days)
+
+    if not prices:
+        # yfinance 실패 시 네이버 폴백
+        prices = await _fetch_naver_prices(code, days)
+
+    if not prices:
         return None
+
+    # 파일 캐시 업데이트
+    _save_file_cache(code, prices)
+
+    result = PriceHistory(code=code, name=name, prices=prices)
+    cache.set(cache_key, result, ttl=300)
+    return result
+
+
+async def _fetch_yfinance(code: str, days: int) -> list[PricePoint]:
+    """yfinance에서 가격 데이터를 가져옴."""
+    import yfinance as yf
+
+    ticker = f"{code}.KS"
+    period_map = {
+        30: "1mo", 90: "3mo", 180: "6mo", 365: "1y",
+        1095: "5y", 1825: "5y",
+    }
+    # 가장 가까운 기간 선택
+    period = "5y"
+    for d, p in sorted(period_map.items()):
+        if days <= d:
+            period = p
+            break
+
+    try:
+        df = await asyncio.to_thread(
+            lambda: yf.Ticker(ticker).history(period=period, auto_adjust=True)
+        )
+        if df.empty:
+            # .KQ (KOSDAQ) 시도
+            ticker = f"{code}.KQ"
+            df = await asyncio.to_thread(
+                lambda: yf.Ticker(ticker).history(period=period, auto_adjust=True)
+            )
+
+        if df.empty:
+            logger.warning("yfinance 데이터 없음: %s", code)
+            return []
+
+        cutoff = datetime.now() - timedelta(days=days)
+        prices = []
+        for date, row in df.iterrows():
+            dt = date.to_pydatetime().replace(tzinfo=None)
+            if dt < cutoff:
+                continue
+            if row["Volume"] == 0 and row["Close"] == 0:
+                continue
+            prices.append(PricePoint(
+                date=dt.strftime("%Y-%m-%d"),
+                open=int(row["Open"]),
+                high=int(row["High"]),
+                low=int(row["Low"]),
+                close=int(row["Close"]),
+                volume=int(row["Volume"]),
+            ))
+        return prices
+    except Exception as e:
+        logger.warning("yfinance 가격 조회 실패 (%s): %s", code, e)
+        return []
+
+
+async def _fetch_naver_prices(code: str, days: int) -> list[PricePoint]:
+    """네이버 금융에서 가격 데이터 폴백."""
+    if not _cb_naver_desktop.can_execute():
+        return []
 
     from bs4 import BeautifulSoup
 
-    name = await get_stock_name(code)
-
-    # 파일 캐시에서 기존 데이터 로드
-    file_cached = _load_file_cache(code)
-    cached_latest_date = None
-    if file_cached:
-        cached_latest_date = file_cached[-1]["date"]  # 가장 최근 날짜
-
     prices: list[PricePoint] = []
+    pages_needed = max((days * 5 // 70) + 2, 3)
     cutoff = datetime.now() - timedelta(days=days)
-    # 파일 캐시가 있으면 캐시 이후 데이터만 가져옴
-    fetch_cutoff = max(cutoff, datetime.strptime(cached_latest_date, "%Y-%m-%d")) if cached_latest_date else cutoff
-    fetch_days = days if not cached_latest_date else (datetime.now() - fetch_cutoff).days
-    # 거래일 기준 계산: 달력일 × 5/7, 페이지당 10거래일
-    pages_needed = max((fetch_days * 5 // 70) + 2, 3)
 
     client = get_desktop_client()
-    reached_cached = False
-    consecutive_empty = 0
     for page in range(1, pages_needed + 1):
-        if reached_cached:
-            break
-
-        url = (
-            f"https://finance.naver.com/item/sise_day.naver"
-            f"?code={code}&page={page}"
-        )
+        url = f"https://finance.naver.com/item/sise_day.naver?code={code}&page={page}"
         resp = None
         for attempt in range(2):
             try:
@@ -541,16 +609,11 @@ async def get_price_history(code: str, days: int = 90) -> PriceHistory | None:
                 _cb_naver_desktop.record_success()
                 break
             except (httpx.HTTPStatusError, httpx.RequestError) as e:
-                logger.warning("가격 히스토리 attempt %d failed (%s, page=%d): %s", attempt + 1, code, page, e)
                 if attempt == 1:
                     _cb_naver_desktop.record_failure()
                 else:
                     await asyncio.sleep(0.5)
                 resp = None
-
-        # 페이지 간 딜레이 (rate limiting 방지)
-        if page % 5 == 0:
-            await asyncio.sleep(0.3)
 
         if resp is None:
             break
@@ -558,88 +621,35 @@ async def get_price_history(code: str, days: int = 90) -> PriceHistory | None:
         try:
             soup = BeautifulSoup(resp.text, "lxml")
             rows = soup.select("table.type2 tr")
-
             found = False
             for row in rows:
                 cols = row.select("td span.tah")
                 if len(cols) < 7:
                     continue
                 found = True
-
                 date_str = cols[0].get_text(strip=True)
                 try:
                     dt = datetime.strptime(date_str, "%Y.%m.%d")
                 except ValueError:
                     continue
-
-                date_formatted = dt.strftime("%Y-%m-%d")
-
-                # 캐시된 데이터에 이미 있는 날짜면 중단
-                if cached_latest_date and date_formatted <= cached_latest_date:
-                    reached_cached = True
-                    break
-
                 if dt < cutoff:
                     found = False
                     break
-
-                close = int(cols[1].get_text(strip=True).replace(",", ""))
-                open_ = int(cols[3].get_text(strip=True).replace(",", ""))
-                high = int(cols[4].get_text(strip=True).replace(",", ""))
-                low = int(cols[5].get_text(strip=True).replace(",", ""))
-                vol = int(cols[6].get_text(strip=True).replace(",", ""))
-
-                prices.append(
-                    PricePoint(
-                        date=date_formatted,
-                        open=open_,
-                        high=high,
-                        low=low,
-                        close=close,
-                        volume=vol,
-                    )
-                )
-
-            if not found:
-                consecutive_empty += 1
-                if consecutive_empty >= 2:
-                    break
-            else:
-                consecutive_empty = 0
-
-        except Exception as e:
-            logger.warning("가격 히스토리 파싱 실패 (%s, page=%d): %s", code, page, e)
+                prices.append(PricePoint(
+                    date=dt.strftime("%Y-%m-%d"),
+                    open=int(cols[3].get_text(strip=True).replace(",", "")),
+                    high=int(cols[4].get_text(strip=True).replace(",", "")),
+                    low=int(cols[5].get_text(strip=True).replace(",", "")),
+                    close=int(cols[1].get_text(strip=True).replace(",", "")),
+                    volume=int(cols[6].get_text(strip=True).replace(",", "")),
+                ))
+            if not found and prices:
+                break
+        except Exception:
             break
 
     prices.reverse()
-
-    # 파일 캐시와 병합
-    if file_cached:
-        cached_prices = [
-            PricePoint(**p) for p in file_cached
-            if p["date"] >= cutoff.strftime("%Y-%m-%d")
-        ]
-        # 새로 가져온 데이터를 캐시 뒤에 붙임
-        all_prices = cached_prices + prices
-        # 중복 제거 (날짜 기준)
-        seen = set()
-        merged = []
-        for p in all_prices:
-            if p.date not in seen:
-                seen.add(p.date)
-                merged.append(p)
-        merged.sort(key=lambda p: p.date)
-        prices = merged
-
-    if not prices:
-        return None
-
-    # 파일 캐시 업데이트 (전체 데이터 저장)
-    _save_file_cache(code, prices)
-
-    result = PriceHistory(code=code, name=name, prices=prices)
-    cache.set(cache_key, result, ttl=300)
-    return result
+    return prices
 
 
 async def get_investor_trend(code: str, days: int = 20) -> list[dict] | None:
