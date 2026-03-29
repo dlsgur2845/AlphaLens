@@ -85,13 +85,13 @@ const ScoreGauge = {
 
   updateBreakdown(breakdown) {
     const items = [
-      { bar: 'barTechnical', val: 'valTechnical', score: breakdown.technical },
-      { bar: 'barSignal', val: 'valSignal', score: breakdown.signal != null ? breakdown.signal : 50 },
-      { bar: 'barFundamental', val: 'valFundamental', score: breakdown.fundamental },
-      { bar: 'barMacro', val: 'valMacro', score: breakdown.macro != null ? breakdown.macro : 50 },
-      { bar: 'barRisk', val: 'valRisk', score: breakdown.risk != null ? breakdown.risk : 50 },
-      { bar: 'barRelated', val: 'valRelated', score: breakdown.related_momentum },
-      { bar: 'barNews', val: 'valNews', score: breakdown.news_sentiment },
+      { bar: 'barTechnical', val: 'valTechnical', score: breakdown.technical, name: '기술적' },
+      { bar: 'barSignal', val: 'valSignal', score: breakdown.signal != null ? breakdown.signal : 50, name: '시그널' },
+      { bar: 'barFundamental', val: 'valFundamental', score: breakdown.fundamental, name: '펀더멘탈' },
+      { bar: 'barMacro', val: 'valMacro', score: breakdown.macro != null ? breakdown.macro : 50, name: '매크로' },
+      { bar: 'barRisk', val: 'valRisk', score: breakdown.risk != null ? breakdown.risk : 50, name: '리스크' },
+      { bar: 'barRelated', val: 'valRelated', score: breakdown.related_momentum, name: '관련기업' },
+      { bar: 'barNews', val: 'valNews', score: breakdown.news_sentiment, name: '뉴스' },
     ];
 
     items.forEach(item => {
@@ -101,8 +101,29 @@ const ScoreGauge = {
         bar.style.width = `${item.score}%`;
         bar.style.background = `linear-gradient(90deg, ${ScoreGauge.getColor(item.score)}, ${ScoreGauge.getColor(item.score)}90)`;
       }
-      if (val) val.textContent = item.score.toFixed(1);
+      if (val) {
+        val.textContent = item.score.toFixed(1);
+        val.style.color = ScoreGauge.getColor(item.score);
+      }
     });
+
+    // 스코어 한줄 요약 생성
+    this._updateScoreSummary(items);
+  },
+
+  _updateScoreSummary(items) {
+    const el = document.getElementById('scoreSummary');
+    if (!el) return;
+
+    const strong = items.filter(i => i.score >= 65).sort((a, b) => b.score - a.score);
+    const weak = items.filter(i => i.score < 40).sort((a, b) => a.score - b.score);
+
+    const parts = [];
+    if (strong.length > 0) parts.push(strong.slice(0, 2).map(i => i.name).join('+') + ' 강세');
+    if (weak.length > 0) parts.push(weak.slice(0, 1).map(i => i.name).join('') + ' 약세');
+    if (parts.length === 0) parts.push('전반적 중립');
+
+    el.textContent = parts.join(' · ');
   },
 
   // ── 스코어 히스토리 미니 차트 ──

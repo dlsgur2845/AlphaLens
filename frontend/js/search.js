@@ -6,8 +6,23 @@ const Search = {
   _selectedIndex: -1,
 
   init() {
-    const input = document.getElementById('searchInput');
-    const dropdown = document.getElementById('searchResults');
+    this._initSearchPair('searchInput', 'searchResults');
+    this._initSearchPair('heroSearchInput', 'heroSearchResults');
+
+    document.addEventListener('click', (e) => {
+      if (!e.target.closest('.search-container') && !e.target.closest('.hero-search-container')) {
+        document.getElementById('searchResults').classList.remove('active');
+        const heroDD = document.getElementById('heroSearchResults');
+        if (heroDD) heroDD.classList.remove('active');
+        this._selectedIndex = -1;
+      }
+    });
+  },
+
+  _initSearchPair(inputId, dropdownId) {
+    const input = document.getElementById(inputId);
+    const dropdown = document.getElementById(dropdownId);
+    if (!input || !dropdown) return;
 
     input.addEventListener('input', () => {
       clearTimeout(this.debounceTimer);
@@ -15,30 +30,22 @@ const Search = {
       const q = input.value.trim();
 
       if (q.length === 0) {
-        this.showQuickAccess();
+        this._showQuickAccessFor(dropdown);
         return;
       }
 
-      this.debounceTimer = setTimeout(() => this.search(q), 300);
+      this.debounceTimer = setTimeout(() => this._searchFor(q, dropdown), 300);
     });
 
     input.addEventListener('focus', () => {
       const q = input.value.trim();
       if (q.length === 0) {
-        this.showQuickAccess();
+        this._showQuickAccessFor(dropdown);
       } else if (dropdown.children.length > 0) {
         dropdown.classList.add('active');
       }
     });
 
-    document.addEventListener('click', (e) => {
-      if (!e.target.closest('.search-container')) {
-        dropdown.classList.remove('active');
-        this._selectedIndex = -1;
-      }
-    });
-
-    // 키보드 네비게이션
     input.addEventListener('keydown', (e) => {
       const items = dropdown.querySelectorAll('.search-item[data-code]');
       if (!items.length && !dropdown.classList.contains('active')) return;
@@ -77,7 +84,10 @@ const Search = {
   },
 
   showQuickAccess() {
-    const dropdown = document.getElementById('searchResults');
+    this._showQuickAccessFor(document.getElementById('searchResults'));
+  },
+
+  _showQuickAccessFor(dropdown) {
     const favs = Storage.getFavorites().slice(0, 5);
     const recent = Storage.getRecent().slice(0, 8);
 
@@ -121,13 +131,15 @@ const Search = {
   },
 
   async search(query) {
-    const dropdown = document.getElementById('searchResults');
+    return this._searchFor(query, document.getElementById('searchResults'));
+  },
 
+  async _searchFor(query, dropdown) {
     try {
       const results = await API.searchStocks(query);
 
       if (results.length === 0) {
-        dropdown.innerHTML = '<div class="search-item"><span class="search-item-name">검색 결과가 없습니다</span></div>';
+        dropdown.innerHTML = '<div class="search-empty-state">검색 결과가 없습니다</div>';
         dropdown.classList.add('active');
         this._selectedIndex = -1;
         return;

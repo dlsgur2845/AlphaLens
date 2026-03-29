@@ -473,7 +473,7 @@ const StockDetail = {
     `;
 
     if (data.articles.length === 0) {
-      listEl.innerHTML = '<div class="loading">\uAD00\uB828 \uB274\uC2A4\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4</div>';
+      listEl.innerHTML = '<div class="empty-state">\uAD00\uB828 \uB274\uC2A4\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4<br><span class="empty-state-sub">\uD574\uB2F9 \uC885\uBAA9\uC758 \uCD5C\uADFC \uB274\uC2A4\uB97C \uCC3E\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4</span></div>';
       return;
     }
 
@@ -507,7 +507,7 @@ const StockDetail = {
     countEl.textContent = `${data.total}\uAC1C \uAE30\uC5C5 \uBC1C\uACAC`;
 
     if (data.companies.length === 0) {
-      gridEl.innerHTML = '<div class="loading">\uAD00\uB828\uAE30\uC5C5\uC744 \uCC3E\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4</div>';
+      gridEl.innerHTML = '<div class="empty-state">\uAD00\uB828\uAE30\uC5C5\uC744 \uCC3E\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4<br><span class="empty-state-sub">\uC5F0\uAD00 \uAE30\uC5C5 \uB370\uC774\uD130\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4</span></div>';
       return;
     }
 

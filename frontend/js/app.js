@@ -50,6 +50,28 @@ const App = {
       Toast.show(added ? `${d.name} 즐겨찾기 추가` : `${d.name} 즐겨찾기 해제`, added ? 'success' : 'info');
     });
 
+    // 인라인 포트폴리오 추가
+    document.getElementById('addToPortfolio').addEventListener('click', () => {
+      if (!StockDetail._lastDetail) return;
+      Router.navigate('portfolio');
+      const d = StockDetail._lastDetail;
+      setTimeout(() => {
+        const input = document.getElementById('portfolioSearchInput');
+        if (input) { input.value = d.name; input.dispatchEvent(new Event('input')); }
+      }, 200);
+    });
+
+    // 인라인 비교 추가
+    document.getElementById('addToCompare').addEventListener('click', () => {
+      if (!StockDetail._lastDetail) return;
+      Router.navigate('compare');
+      const d = StockDetail._lastDetail;
+      setTimeout(() => {
+        const input = document.getElementById('compareInput1');
+        if (input && !input.value) { input.value = d.name; input.dispatchEvent(new Event('input')); }
+      }, 200);
+    });
+
     // 홈 섹션 헤더 클릭 → 해당 페이지 이동
     document.querySelectorAll('.section-header-nav[data-nav-to]').forEach(header => {
       header.addEventListener('click', (e) => {

@@ -27,6 +27,9 @@ const Favorites = {
       const showFavs = limit ? favs.slice(0, limit) : favs;
       favGrid.innerHTML = showFavs.map((s) => this._cardHTML(s, 'favorite')).join('');
       this._bindCards(favGrid, 'favorite');
+    } else if (isFavPage) {
+      favSection.style.display = '';
+      favGrid.innerHTML = '<div class="empty-state">\uAD00\uC2EC \uC885\uBAA9\uC774 \uC5C6\uC2B5\uB2C8\uB2E4<br><span class="empty-state-sub">\uC885\uBAA9 \uBD84\uC11D \uD654\uBA74\uC5D0\uC11C \u2606 \uBC84\uD2BC\uc744 \uB20C\uB7EC \uCD94\uAC00\uD558\uC138\uC694</span></div>';
     } else {
       favSection.style.display = 'none';
     }

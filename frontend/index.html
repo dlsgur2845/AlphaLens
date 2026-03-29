@@ -8,8 +8,9 @@
   <title>AlphaLens - 주식 분석</title>
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="manifest" href="/manifest.json">
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/css/style.css?v=15">
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="/css/style.css?v=16">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js" integrity="sha384-vsrfeLOOY6KuIYKDlmVH5UiBmgIdB1oEf7p01YgWHuqmOHfZr374+odEv96n9tNC" crossorigin="anonymous"></script>
   <noscript><style>.app-content{display:flex;justify-content:center;align-items:center;min-height:80vh;}.noscript-msg{color:#94a3b8;text-align:center;}</style></noscript>
 </head>
@@ -78,6 +79,11 @@
           <div class="welcome-hero" id="welcomeHero">
             <h2>종목을 검색하세요</h2>
             <p>삼성전자, 005930 등으로 검색하면 스코어링 분석을 제공합니다.</p>
+            <div class="hero-search-container">
+              <label for="heroSearchInput" class="sr-only">종목 검색</label>
+              <input type="text" id="heroSearchInput" class="hero-search-input" placeholder="종목 코드 또는 명칭 검색" autocomplete="off">
+              <div id="heroSearchResults" class="search-dropdown"></div>
+            </div>
           </div>
 
           <!-- 즐겨찾기 -->
@@ -304,6 +310,8 @@
             <button id="favToggle" class="fav-btn" title="관심종목 추가 (F)">
               <span>관심종목 추가</span>
             </button>
+            <button id="addToPortfolio" class="inline-action-btn" title="포트폴리오에 추가">포트폴리오+</button>
+            <button id="addToCompare" class="inline-action-btn" title="비교에 추가">비교+</button>
           </div>
         </section>
 
@@ -332,6 +340,7 @@
               </div>
               <div>
                 <div id="scoreSignal" class="score-signal">분석 중...</div>
+                <div class="score-summary-text" id="scoreSummary"></div>
                 <div class="score-updated" id="scoreUpdated"></div>
                 <div class="score-history-wrap" id="scoreHistoryWrap" style="display:none">
                   <canvas id="scoreHistoryChart" width="140" height="40"></canvas>
@@ -400,12 +409,14 @@
         <div class="action-guide" id="actionGuide" style="display:none" role="region" aria-label="투자 액션 가이드">
           <div class="section-header"><span class="section-title">투자 액션 가이드</span></div>
           <div class="action-guide-grid">
-            <div class="action-card has-action-tip" data-tip="7-팩터 종합 점수 기반 매매 판단. 강력매수(≥80) / 매수(≥65) / 관망(매수우위) / 중립 / 관망(매도우위) / 매도(≤35) / 강력매도(≤20)"><span class="action-label">투자 의견</span><span class="action-value" id="actionOpinion">-</span></div>
+            <div class="action-card action-primary has-action-tip" data-tip="7-팩터 종합 점수 기반 매매 판단. 강력매수(≥80) / 매수(≥65) / 관망(매수우위) / 중립 / 관망(매도우위) / 매도(≤35) / 강력매도(≤20)"><span class="action-label">투자 의견</span><span class="action-value" id="actionOpinion">-</span></div>
             <div class="action-card has-action-tip" data-tip="현재가 + ATR(평균진폭) × 배수로 산출. 종합 점수가 높을수록 배수 증가 (65점 이상: ×3, 55점 이상: ×2, 그 외: ×1.5)"><span class="action-label">목표가</span><span class="action-value" id="actionTarget">-</span></div>
             <div class="action-card has-action-tip" data-tip="현재가 - ATR × 2로 산출. 이 가격 이하로 하락 시 손실 제한을 위해 매도를 고려하는 기준선"><span class="action-label">손절가</span><span class="action-value" id="actionStopLoss">-</span></div>
-            <div class="action-card has-action-tip" data-tip="리스크 등급 기반 포트폴리오 내 권장 투자 비중. 변동성·MDD·VaR 등을 고려하여 산출"><span class="action-label">제안 비중</span><span class="action-value" id="actionPosition">-</span></div>
-            <div class="action-card has-action-tip" data-tip="변동성(30%) + MDD(25%) + VaR/CVaR(20%) + 유동성(25%) 기반 종합 리스크 등급. A(최저 위험) ~ E(최고 위험). 25점 미만 시 총점 45점 캡 적용"><span class="action-label">리스크 등급</span><span class="action-value" id="actionRiskGrade">-</span></div>
-            <div class="action-card has-action-tip" data-tip="종합 점수가 50점(중립)에서 벗어난 정도. 높음(편차 25+) / 보통(편차 15+) / 낮음(편차 15 미만). 점수가 극단에 가까울수록 신호의 확신도가 높음"><span class="action-label">확신도</span><span class="action-value" id="actionConfidence">-</span></div>
+            <div class="action-guide-grid-sub">
+              <div class="action-card has-action-tip" data-tip="리스크 등급 기반 포트폴리오 내 권장 투자 비중. 변동성·MDD·VaR 등을 고려하여 산출"><span class="action-label">제안 비중</span><span class="action-value" id="actionPosition">-</span></div>
+              <div class="action-card has-action-tip" data-tip="변동성(30%) + MDD(25%) + VaR/CVaR(20%) + 유동성(25%) 기반 종합 리스크 등급. A(최저 위험) ~ E(최고 위험). 25점 미만 시 총점 45점 캡 적용"><span class="action-label">리스크 등급</span><span class="action-value" id="actionRiskGrade">-</span></div>
+              <div class="action-card has-action-tip" data-tip="종합 점수가 50점(중립)에서 벗어난 정도. 높음(편차 25+) / 보통(편차 15+) / 낮음(편차 15 미만). 점수가 극단에 가까울수록 신호의 확신도가 높음"><span class="action-label">확신도</span><span class="action-value" id="actionConfidence">-</span></div>
+            </div>
           </div>
         </div>
 
@@ -513,22 +524,22 @@
   </div>
 </div>
 
-<script src="/js/api.js?v=15"></script>
-<script src="/js/storage.js?v=15"></script>
-<script src="/js/chart.js?v=15"></script>
-<script src="/js/score.js?v=15"></script>
-<script src="/js/search.js?v=15"></script>
-<script src="/js/stream.js?v=15"></script>
-<script src="/js/utils.js?v=15"></script>
-<script src="/js/geopolitical.js?v=15"></script>
-<script src="/js/market.js?v=15"></script>
-<script src="/js/investor.js?v=15"></script>
-<script src="/js/portfolio.js?v=15"></script>
-<script src="/js/monitor.js?v=15"></script>
-<script src="/js/favorites.js?v=15"></script>
-<script src="/js/compare.js?v=15"></script>
-<script src="/js/stock-detail.js?v=15"></script>
-<script src="/js/router.js?v=15"></script>
-<script src="/js/app.js?v=15"></script>
+<script src="/js/api.js?v=16"></script>
+<script src="/js/storage.js?v=16"></script>
+<script src="/js/chart.js?v=16"></script>
+<script src="/js/score.js?v=16"></script>
+<script src="/js/search.js?v=16"></script>
+<script src="/js/stream.js?v=16"></script>
+<script src="/js/utils.js?v=16"></script>
+<script src="/js/geopolitical.js?v=16"></script>
+<script src="/js/market.js?v=16"></script>
+<script src="/js/investor.js?v=16"></script>
+<script src="/js/portfolio.js?v=16"></script>
+<script src="/js/monitor.js?v=16"></script>
+<script src="/js/favorites.js?v=16"></script>
+<script src="/js/compare.js?v=16"></script>
+<script src="/js/stock-detail.js?v=16"></script>
+<script src="/js/router.js?v=16"></script>
+<script src="/js/app.js?v=16"></script>
 </body>
 </html>
