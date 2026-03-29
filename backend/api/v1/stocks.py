@@ -51,7 +51,7 @@ async def get_stock_detail(code: str):
 @router.get("/{code}/price", response_model=PriceHistory)
 async def get_price_history(
     code: str,
-    days: int = Query(90, ge=7, le=365),
+    days: int = Query(90, ge=7, le=1825),
 ):
     """가격 히스토리 조회 API."""
     validate_stock_code(code)

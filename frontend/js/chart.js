@@ -210,7 +210,16 @@ const PriceChart = {
     if (!this.chart || !this._rawData?.prices) return;
 
     const prices = this._rawData.prices;
-    const labels = prices.map((p) => p.date.slice(5));
+    // 6개월 이상이면 연도 포함, 그 이하는 월-일만
+    const showYear = prices.length > 120;
+    const labels = prices.map((p) => {
+      if (showYear) {
+        // "2024-03-29" → "24.03"  (연도 2자리 + 월)
+        const parts = p.date.split('-');
+        return parts[0].slice(2) + '.' + parts[1];
+      }
+      return p.date.slice(5); // "03-29"
+    });
     const closes = prices.map((p) => p.close);
 
     const datasets = [];
