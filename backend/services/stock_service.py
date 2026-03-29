@@ -518,10 +518,13 @@ async def get_price_history(code: str, days: int = 90) -> PriceHistory | None:
     cutoff = datetime.now() - timedelta(days=days)
     # 파일 캐시가 있으면 캐시 이후 데이터만 가져옴
     fetch_cutoff = max(cutoff, datetime.strptime(cached_latest_date, "%Y-%m-%d")) if cached_latest_date else cutoff
-    pages_needed = max(((days if not cached_latest_date else (datetime.now() - fetch_cutoff).days) // 10) + 2, 3)
+    fetch_days = days if not cached_latest_date else (datetime.now() - fetch_cutoff).days
+    # 거래일 기준 계산: 달력일 × 5/7, 페이지당 10거래일
+    pages_needed = max((fetch_days * 5 // 70) + 2, 3)
 
     client = get_desktop_client()
     reached_cached = False
+    consecutive_empty = 0
     for page in range(1, pages_needed + 1):
         if reached_cached:
             break
@@ -544,6 +547,10 @@ async def get_price_history(code: str, days: int = 90) -> PriceHistory | None:
                 else:
                     await asyncio.sleep(0.5)
                 resp = None
+
+        # 페이지 간 딜레이 (rate limiting 방지)
+        if page % 5 == 0:
+            await asyncio.sleep(0.3)
 
         if resp is None:
             break
@@ -593,8 +600,12 @@ async def get_price_history(code: str, days: int = 90) -> PriceHistory | None:
                     )
                 )
 
-            if not found and prices:
-                break
+            if not found:
+                consecutive_empty += 1
+                if consecutive_empty >= 2:
+                    break
+            else:
+                consecutive_empty = 0
 
         except Exception as e:
             logger.warning("가격 히스토리 파싱 실패 (%s, page=%d): %s", code, page, e)
